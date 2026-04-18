@@ -10,6 +10,7 @@ import {
   type AuthUser,
 } from "@/lib/appAuth";
 import { ExplorePage } from "@/pages/ExplorePage";
+import { CreateEventPage } from "@/pages/CreateEventPage";
 import { CreateExperiencePage } from "@/pages/CreateExperiencePage";
 import { CreatePage } from "@/pages/CreatePage";
 import { CreateSkillPostPage } from "@/pages/CreateSkillPostPage";
@@ -151,6 +152,7 @@ export default function App() {
         >
           <Route index element={<HomePage />} />
           <Route path="create" element={<CreatePage authUser={authUser!} />} />
+          <Route path="create/event" element={<CreateEventPage authUser={authUser!} />} />
           <Route path="create/post" element={<CreateSkillPostPage authUser={authUser!} />} />
           <Route path="create/experience" element={<CreateExperiencePage authUser={authUser!} />} />
           <Route path="explore" element={<ExplorePage />} />

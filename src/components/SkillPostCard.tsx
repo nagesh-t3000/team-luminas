@@ -1,12 +1,12 @@
 import { Link } from "react-router-dom";
-import { currentUser } from "@/data/mockData";
+import { buildFallbackAvatar } from "@/lib/publicUsers";
 import type { SkillPost } from "@/lib/skillPosts";
 import { formatRelativePostTime } from "@/lib/skillPosts";
 
 export function SkillPostCard({ post }: { post: SkillPost }) {
   const authorDisplayName = post.author_full_name?.trim() || post.author_username;
   const roleText = post.author_professional_role?.trim() || "Luminas member";
-  const avatarUrl = post.author_profile_photo_url || currentUser.avatarUrl;
+  const avatarUrl = post.author_profile_photo_url || buildFallbackAvatar(authorDisplayName);
   const hasBody = Boolean(post.content);
   const hasMedia = post.media_items.length > 0;
 

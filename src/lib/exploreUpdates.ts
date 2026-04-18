@@ -15,6 +15,12 @@ export type ExploreUpdate = {
   raw_payload: Record<string, unknown>;
   published_at: string;
   created_at: string;
+  author_id?: string | null;
+  author_username?: string | null;
+  author_full_name?: string | null;
+  author_professional_role?: string | null;
+  author_profile_photo_url?: string | null;
+  author_is_verified?: boolean;
 };
 
 function getErrorMessage(error: unknown) {
@@ -80,6 +86,12 @@ function normalizeExploreUpdate(update: ExploreUpdate) {
       typeof update.raw_payload === "object" && update.raw_payload !== null
         ? update.raw_payload
         : {},
+    author_id: update.author_id?.trim() || null,
+    author_username: update.author_username?.trim() || null,
+    author_full_name: update.author_full_name?.trim() || null,
+    author_professional_role: update.author_professional_role?.trim() || null,
+    author_profile_photo_url: update.author_profile_photo_url?.trim() || null,
+    author_is_verified: Boolean(update.author_is_verified),
   };
 }
 

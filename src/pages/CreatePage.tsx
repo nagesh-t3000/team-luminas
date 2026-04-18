@@ -7,6 +7,13 @@ type CreatePageProps = {
 
 const createOptions = [
   {
+    title: "Event",
+    description:
+      "Create a meetup, workshop, demo day, or other community event so people can discover it in Explore.",
+    href: "/create/event",
+    cta: "Create event",
+  },
+  {
     title: "Skill post",
     description:
       "Share a short post with text, images, or videos so your expertise can appear in the home feed and on your profile.",
@@ -33,7 +40,7 @@ export function CreatePage({ authUser }: CreatePageProps) {
             </span>
             <h1 className="mt-4 text-3xl font-bold tracking-tight text-ig-text">Choose what you want to add</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-ig-muted">
-              Use this space to publish a skill post or add a profile experience entry.
+              Use this space to create an event, publish a skill post, or add a profile experience entry.
             </p>
           </div>
           <Link
@@ -44,7 +51,7 @@ export function CreatePage({ authUser }: CreatePageProps) {
           </Link>
         </div>
 
-        <div className="mt-8 grid gap-5 md:grid-cols-2">
+        <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           {createOptions.map((option) => (
             <section key={option.title} className="rounded-3xl border border-ig-border bg-ig-bg p-6">
               <h2 className="text-xl font-semibold text-ig-text">{option.title}</h2>

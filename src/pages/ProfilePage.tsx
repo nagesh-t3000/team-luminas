@@ -5,6 +5,8 @@ import { SkillPostCard } from "@/components/SkillPostCard";
 import { currentUser, posts, roleLabel, users } from "@/data/mockData";
 import { listUserExperiencesByUsername, type UserExperience } from "@/lib/experiences";
 import { getAuthUserAvatarUrl, getStoredAuthUser } from "@/lib/appAuth";
+import { getConnectionCount, listConnectedUsernames, subscribeToConnections, toggleConnection } from "@/lib/connections";
+import { getPublicUserByUsername, type PublicUser } from "@/lib/publicUsers";
 import { listSkillPostsByUsername, type SkillPost } from "@/lib/skillPosts";
 
 type ProfileTab = "posts" | "experience" | "saved";
@@ -113,12 +115,31 @@ function ProfileTabIcon({ tab }: { tab: ProfileTab }) {
 export function ProfilePage() {
   const { username } = useParams();
   const authUser = useMemo(() => getStoredAuthUser(), []);
+  const viewerUsername = authUser?.username || currentUser.username;
   const [activeTab, setActiveTab] = useState<ProfileTab>("posts");
   const [skillPosts, setSkillPosts] = useState<SkillPost[]>([]);
   const [skillPostsError, setSkillPostsError] = useState("");
   const [userExperiences, setUserExperiences] = useState<UserExperience[]>([]);
   const [userExperiencesError, setUserExperiencesError] = useState("");
-  const isOwnProfile = Boolean(authUser && username === authUser.username);
+  const [publicProfile, setPublicProfile] = useState<PublicUser | null>(null);
+  const [connectedUsernames, setConnectedUsernames] = useState<string[]>([]);
+  const [connectionCount, setConnectionCount] = useState(0);
+  const [isConnectionPending, setIsConnectionPending] = useState(false);
+  const isOwnProfile = username === viewerUsername;
+  const matchedMockUser = useMemo(() => users.find((candidate) => candidate.username === username) ?? null, [username]);
+  const fallbackUser = useMemo(
+    () =>
+      matchedMockUser ?? {
+        id: "",
+        username: username || currentUser.username,
+        fullName: username || "Luminas member",
+        avatarUrl: currentUser.avatarUrl,
+        role: currentUser.role,
+        headline: "",
+        verified: false,
+      },
+    [matchedMockUser, username],
+  );
   const user = useMemo(() => {
     if (isOwnProfile && authUser) {
       return {
@@ -131,8 +152,20 @@ export function ProfilePage() {
       };
     }
 
-    return users.find((candidate) => candidate.username === username) ?? currentUser;
-  }, [authUser, isOwnProfile, username]);
+    if (publicProfile) {
+      return {
+        id: publicProfile.id,
+        username: publicProfile.username,
+        fullName: publicProfile.full_name?.trim() || publicProfile.username,
+        avatarUrl: publicProfile.avatar_url,
+        role: fallbackUser.role,
+        headline: publicProfile.bio?.trim() || fallbackUser.headline,
+        verified: fallbackUser.verified,
+      };
+    }
+
+    return fallbackUser;
+  }, [authUser, fallbackUser, isOwnProfile, publicProfile]);
   const userPosts = posts.filter((p) => p.userId === user.id);
   const displayGrid = userPosts.map((p) => ({ id: p.id, src: p.imageUrl }));
   const savedGrid = useMemo(
@@ -143,11 +176,15 @@ export function ProfilePage() {
         .map((p) => ({ id: p.id, src: p.imageUrl })),
     [user.id],
   );
-  const seededExperienceEntries = experienceByRole[user.role];
+  const seededExperienceEntries = matchedMockUser ? experienceByRole[matchedMockUser.role] : [];
   const displayRole =
     isOwnProfile && authUser?.professional_role?.trim()
       ? authUser.professional_role
-      : roleLabel[user.role];
+      : publicProfile?.professional_role?.trim()
+        ? publicProfile.professional_role
+        : matchedMockUser
+          ? roleLabel[matchedMockUser.role]
+          : "";
   const skilledDomains = isOwnProfile ? authUser?.skilled_domains ?? [] : [];
   const totalPostCount = skillPosts.length + userPosts.length;
   const tabs: Array<{ id: ProfileTab; label: string }> = [
@@ -171,6 +208,62 @@ export function ProfilePage() {
             period: entry.period,
             summary: entry.summary,
           }));
+  const isConnected = connectedUsernames.includes(user.username);
+  const formattedConnectionCount = new Intl.NumberFormat("en-US").format(connectionCount);
+
+  useEffect(() => {
+    if (isOwnProfile || !username) {
+      setPublicProfile(null);
+      return;
+    }
+
+    let isCancelled = false;
+
+    getPublicUserByUsername(username)
+      .then((profile) => {
+        if (!isCancelled) {
+          setPublicProfile(profile);
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to load public profile", error);
+
+        if (!isCancelled) {
+          setPublicProfile(null);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOwnProfile, username]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const syncConnections = async () => {
+      const [nextConnectedUsernames, nextConnectionCount] = await Promise.all([
+        listConnectedUsernames(viewerUsername),
+        getConnectionCount(user.username),
+      ]);
+
+      if (!isCancelled) {
+        setConnectedUsernames(nextConnectedUsernames);
+        setConnectionCount(nextConnectionCount);
+      }
+    };
+
+    void syncConnections();
+
+    const unsubscribe = subscribeToConnections(() => {
+      void syncConnections();
+    });
+
+    return () => {
+      isCancelled = true;
+      unsubscribe();
+    };
+  }, [user.username, viewerUsername]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -216,6 +309,30 @@ export function ProfilePage() {
     };
   }, [user.username]);
 
+  async function handleToggleConnection() {
+    if (isConnectionPending) {
+      return;
+    }
+
+    setIsConnectionPending(true);
+
+    const nextIsConnected = await toggleConnection(viewerUsername, user.username);
+    const [nextConnectedUsernames, nextConnectionCount] = await Promise.all([
+      listConnectedUsernames(viewerUsername),
+      getConnectionCount(user.username),
+    ]);
+
+    setConnectedUsernames(
+      nextConnectedUsernames.length > 0
+        ? nextConnectedUsernames
+        : nextIsConnected
+          ? [user.username]
+          : [],
+    );
+    setConnectionCount(nextConnectionCount);
+    setIsConnectionPending(false);
+  }
+
   return (
     <div className="relative mx-auto max-w-[935px] border-ig-border bg-ig-surface md:mt-6 md:rounded-lg md:border lg:max-w-[1015px]">
       {isOwnProfile ? (
@@ -247,24 +364,30 @@ export function ProfilePage() {
                 </span>
               ) : null}
             </div>
-            <div className="flex gap-2 md:ml-4">
-              <button type="button" className="rounded-lg bg-ig-link px-4 py-1.5 text-[14px] font-semibold text-white">
-                Connect
-              </button>
-              <button type="button" className="rounded-lg bg-ig-bg px-4 py-1.5 text-[14px] font-semibold">
-                Message
-              </button>
-            </div>
+            {!isOwnProfile ? (
+              <div className="flex gap-2 md:ml-4">
+                <button
+                  type="button"
+                  className={`rounded-lg px-4 py-1.5 text-[14px] font-semibold ${
+                    isConnected ? "bg-ig-bg text-ig-text" : "bg-ig-link text-white"
+                  }`}
+                  onClick={() => void handleToggleConnection()}
+                  disabled={isConnectionPending}
+                >
+                  {isConnected ? "Connected" : "Connect"}
+                </button>
+                <button type="button" className="rounded-lg bg-ig-bg px-4 py-1.5 text-[14px] font-semibold">
+                  Message
+                </button>
+              </div>
+            ) : null}
           </div>
           <div className="mb-4 hidden gap-10 text-[16px] md:flex">
             <span>
               <strong>{totalPostCount}</strong> posts
             </span>
             <span>
-              <strong>12.4k</strong> followers
-            </span>
-            <span>
-              <strong>318</strong> following
+              <strong>{formattedConnectionCount}</strong> connections
             </span>
           </div>
           <div className="mb-1">
@@ -291,10 +414,7 @@ export function ProfilePage() {
           <strong>{totalPostCount}</strong> posts
         </span>
         <span>
-          <strong>12.4k</strong> followers
-        </span>
-        <span>
-          <strong>318</strong> following
+          <strong>{formattedConnectionCount}</strong> connections
         </span>
       </div>
       <div className="flex border-t border-ig-border">

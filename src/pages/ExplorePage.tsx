@@ -6,6 +6,7 @@ import {
   type ExploreUpdateCategory,
 } from "@/lib/exploreUpdates";
 import { formatRelativePostTime } from "@/lib/skillPosts";
+import { listUserEvents } from "@/lib/userEvents";
 
 const categoryTabs: Array<{ label: string; value: ExploreUpdateCategory | "all" }> = [
   { label: "All", value: "all" },
@@ -103,8 +104,39 @@ export function ExplorePage() {
     setIsLoading(true);
 
     listExploreUpdates(24, selectedCategory === "all" ? undefined : selectedCategory, searchQuery)
-      .then((nextUpdates) => {
+      .then((remoteUpdates) => {
         if (!isCancelled) {
+          const normalizedSearch = searchQuery.trim().toLowerCase();
+          const createdEvents = listUserEvents().filter((event) => {
+            const matchesCategory = selectedCategory === "all" || event.category === selectedCategory;
+
+            if (!matchesCategory) {
+              return false;
+            }
+
+            if (!normalizedSearch) {
+              return true;
+            }
+
+            const searchableText = [
+              event.title,
+              event.summary,
+              event.source_name,
+              event.location,
+              ...event.tags,
+            ]
+              .join(" ")
+              .toLowerCase();
+
+            return searchableText.includes(normalizedSearch);
+          });
+
+          const nextUpdates = [...createdEvents, ...remoteUpdates].sort((left, right) => {
+            const leftTime = new Date(left.published_at).getTime();
+            const rightTime = new Date(right.published_at).getTime();
+            return rightTime - leftTime;
+          });
+
           setUpdates(nextUpdates);
           setErrorMessage("");
         }

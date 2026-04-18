@@ -4,7 +4,7 @@ import type {
   NormalizedLandmark,
 } from "@mediapipe/tasks-vision";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { setStoredAuthUser, type AuthUser } from "@/lib/appAuth";
+import { persistAuthUserWithSettings, type AuthUser } from "@/lib/appAuth";
 import { createBackendFaceIdentity } from "@/lib/faceVerification";
 import { getFaceLandmarker } from "@/lib/faceLandmarker";
 import {
@@ -757,10 +757,10 @@ export function HumanVerificationPage({
       throw new Error("No verification data was returned from Supabase.");
     }
 
-    setStoredAuthUser(nextUser);
-    onVerificationCompleted(nextUser);
+    const userWithSettings = await persistAuthUserWithSettings(nextUser as AuthUser);
+    onVerificationCompleted(userWithSettings);
 
-    return nextUser as AuthUser;
+    return userWithSettings;
   }
 
   async function handleDemoVerification() {
@@ -847,8 +847,8 @@ export function HumanVerificationPage({
       }
 
       stopCamera();
-      setStoredAuthUser(updatedUser);
-      onVerificationCompleted(updatedUser);
+      const userWithSettings = await persistAuthUserWithSettings(updatedUser);
+      onVerificationCompleted(userWithSettings);
     } catch (error) {
       submissionInFlightRef.current = false;
       setErrorMessage(getErrorMessage(error));

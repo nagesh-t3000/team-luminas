@@ -2,14 +2,13 @@ import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   IconCreate,
-  IconExplore,
   IconHome,
   IconMessage,
   IconReels,
   IconSearch,
 } from "@/components/Icons";
 import { currentUser } from "@/data/mockData";
-import { clearStoredAuthUser, getStoredAuthUser } from "@/lib/appAuth";
+import { clearStoredAuthUser, getAuthUserAvatarUrl, getStoredAuthUser } from "@/lib/appAuth";
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   [
@@ -21,6 +20,7 @@ export function Sidebar() {
   const navigate = useNavigate();
   const authUser = getStoredAuthUser();
   const profileUsername = authUser?.username || currentUser.username;
+  const avatarUrl = getAuthUserAvatarUrl(authUser) || currentUser.avatarUrl;
   const [isMoreOpen, setIsMoreOpen] = useState(false);
 
   function handleLogout() {
@@ -44,14 +44,10 @@ export function Sidebar() {
             </>
           )}
         </NavLink>
-        <button type="button" className={linkClass({ isActive: false })}>
-          <IconSearch />
-          <span>Search</span>
-        </button>
         <NavLink to="/explore" className={linkClass}>
           <>
-            <IconExplore />
-            <span>Explore</span>
+            <IconSearch />
+            <span>Discover</span>
           </>
         </NavLink>
         <NavLink to="/reels" className={linkClass}>
@@ -62,13 +58,13 @@ export function Sidebar() {
           <IconMessage />
           <span>Messages</span>
         </NavLink>
-        <button type="button" className={linkClass({ isActive: false })}>
+        <NavLink to="/create" className={linkClass}>
           <IconCreate />
           <span>Create</span>
-        </button>
+        </NavLink>
         <NavLink to={`/profile/${profileUsername}`} className={linkClass}>
           <span className="flex h-6 w-6 shrink-0 overflow-hidden rounded-full border border-ig-border">
-            <img src={currentUser.avatarUrl} alt="" className="h-full w-full object-cover" width={24} height={24} />
+            <img src={avatarUrl} alt="" className="h-full w-full object-cover" width={24} height={24} />
           </span>
           <span>Profile</span>
         </NavLink>

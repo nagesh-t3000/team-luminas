@@ -1,17 +1,24 @@
 import { Link } from "react-router-dom";
 import { currentUser, suggestedUsers, roleLabel } from "@/data/mockData";
-import { getStoredAuthUser } from "@/lib/appAuth";
+import { getAuthUserAvatarUrl, getStoredAuthUser } from "@/lib/appAuth";
 
 export function Suggestions() {
   const authUser = getStoredAuthUser();
   const profileUsername = authUser?.username || currentUser.username;
   const displayName = authUser?.full_name?.trim() || currentUser.fullName;
+  const avatarUrl = getAuthUserAvatarUrl(authUser) || currentUser.avatarUrl;
+  const preferredSuggestions = authUser?.preferred_suggestions ?? [];
+  const visibleSuggestions =
+    preferredSuggestions.length > 0
+      ? suggestedUsers.filter((user) => preferredSuggestions.includes(user.role)).slice(0, 5)
+      : suggestedUsers;
+  const displayedSuggestions = visibleSuggestions.length > 0 ? visibleSuggestions : suggestedUsers;
 
   return (
     <aside className="hidden w-[319px] shrink-0 py-8 pl-4 xl:block">
       <div className="mb-6 flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <img src={currentUser.avatarUrl} alt="" className="h-14 w-14 shrink-0 rounded-full object-cover" width={56} height={56} />
+          <img src={avatarUrl} alt="" className="h-14 w-14 shrink-0 rounded-full object-cover" width={56} height={56} />
           <div className="min-w-0">
             <Link to={`/profile/${profileUsername}`} className="block truncate text-[14px] font-semibold hover:text-ig-muted">
               {profileUsername}
@@ -30,7 +37,7 @@ export function Suggestions() {
         </button>
       </div>
       <ul className="space-y-3">
-        {suggestedUsers.map((u) => (
+        {displayedSuggestions.map((u) => (
           <li key={u.id} className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-3">
               <img src={u.avatarUrl} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" width={32} height={32} />

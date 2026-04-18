@@ -1,6 +1,10 @@
 import { stories, userById, currentUser } from "@/data/mockData";
+import { getAuthUserAvatarUrl, getStoredAuthUser } from "@/lib/appAuth";
 
 export function StoryRail() {
+  const authUser = getStoredAuthUser();
+  const avatarUrl = getAuthUserAvatarUrl(authUser) || currentUser.avatarUrl;
+
   return (
     <div className="mb-3 rounded-lg border border-ig-border bg-ig-surface px-4 py-3 md:border-0 md:bg-transparent md:px-0 md:py-0">
       <div className="scrollbar-hide flex gap-4 overflow-x-auto pb-1">
@@ -9,7 +13,7 @@ export function StoryRail() {
             <div className="story-ring">
               <div className="story-ring-inner">
                 <img
-                  src={currentUser.avatarUrl}
+                  src={avatarUrl}
                   alt=""
                   className="h-14 w-14 rounded-full object-cover"
                   width={56}

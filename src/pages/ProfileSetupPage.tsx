@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { setStoredAuthUser, type AuthUser } from "@/lib/appAuth";
+import { persistAuthUserWithSettings, type AuthUser } from "@/lib/appAuth";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 type ProfileSetupPageProps = {
@@ -85,8 +85,8 @@ export function ProfileSetupPage({
         throw new Error("No profile data was returned from Supabase.");
       }
 
-      setStoredAuthUser(updatedUser);
-      onProfileCompleted(updatedUser);
+      const userWithSettings = await persistAuthUserWithSettings(updatedUser);
+      onProfileCompleted(userWithSettings);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
     } finally {

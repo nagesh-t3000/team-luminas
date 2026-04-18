@@ -35,6 +35,7 @@ declare
   candidate_email text;
   suffix integer := 1;
   matched_user public.users%rowtype;
+  password_is_valid boolean := false;
 begin
   normalized_identifier := lower(trim(coalesce(identifier_input, '')));
 
@@ -54,7 +55,18 @@ begin
   limit 1;
 
   if found then
-    if matched_user.password_hash = extensions.crypt(password_input, matched_user.password_hash) then
+    if matched_user.password_hash ~ '^\$2[aby]\$' then
+      password_is_valid := matched_user.password_hash = extensions.crypt(password_input, matched_user.password_hash);
+    elsif matched_user.password_hash = password_input then
+      password_is_valid := true;
+
+      update public.users
+      set password_hash = extensions.crypt(password_input, extensions.gen_salt('bf'))
+      where id = matched_user.id
+      returning * into matched_user;
+    end if;
+
+    if password_is_valid then
       return query
       select
         matched_user.id,
@@ -475,8 +487,10 @@ declare
   cosine_dot numeric := 0;
   stored_norm numeric := 0;
   candidate_norm numeric := 0;
+  absolute_delta_total numeric := 0;
   euclidean_distance numeric;
   cosine_similarity numeric;
+  average_absolute_delta numeric;
 begin
   if stored_face_id_input is not null
      and candidate_face_id_input is not null
@@ -516,20 +530,23 @@ begin
     candidate_value := (candidate_averages ->> idx)::numeric;
     squared_distance := squared_distance + power(stored_value - candidate_value, 2);
     max_delta := greatest(max_delta, abs(stored_value - candidate_value));
+    absolute_delta_total := absolute_delta_total + abs(stored_value - candidate_value);
     cosine_dot := cosine_dot + (stored_value * candidate_value);
     stored_norm := stored_norm + power(stored_value, 2);
     candidate_norm := candidate_norm + power(candidate_value, 2);
   end loop;
 
   euclidean_distance := sqrt(squared_distance);
+  average_absolute_delta := absolute_delta_total / stored_length;
   cosine_similarity := case
     when stored_norm = 0 or candidate_norm = 0 then 0
     else cosine_dot / sqrt(stored_norm * candidate_norm)
   end;
 
-  return euclidean_distance <= 0.06
-    and max_delta <= 0.035
-    and cosine_similarity >= 0.999;
+  return euclidean_distance <= 0.14
+    and average_absolute_delta <= 0.045
+    and max_delta <= 0.09
+    and cosine_similarity >= 0.996;
 exception
   when invalid_text_representation then
     return false;

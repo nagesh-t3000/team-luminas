@@ -1,16 +1,123 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { IconSettings } from "@/components/Icons";
+import { SkillPostCard } from "@/components/SkillPostCard";
 import { currentUser, posts, roleLabel, users } from "@/data/mockData";
-import { getStoredAuthUser } from "@/lib/appAuth";
+import { listUserExperiencesByUsername, type UserExperience } from "@/lib/experiences";
+import { getAuthUserAvatarUrl, getStoredAuthUser } from "@/lib/appAuth";
+import { listSkillPostsByUsername, type SkillPost } from "@/lib/skillPosts";
 
-const grid = Array.from({ length: 9 }, (_, i) => ({
-  id: i,
-  src: `https://picsum.photos/seed/pg${i}/400/400`,
-}));
+type ProfileTab = "posts" | "experience" | "saved";
+
+const experienceByRole = {
+  founder: [
+    {
+      title: "Founder",
+      org: "Luminas",
+      period: "2024 - Present",
+      summary: "Building a professional network for startup operators, investors, and talent.",
+    },
+    {
+      title: "Product Lead",
+      org: "VentureStack",
+      period: "2021 - 2024",
+      summary: "Led zero-to-one workflow launches for founder onboarding and investor matching.",
+    },
+  ],
+  investor: [
+    {
+      title: "Partner",
+      org: "Northvale Capital",
+      period: "2022 - Present",
+      summary: "Backing fintech and infrastructure teams from Series A through growth.",
+    },
+    {
+      title: "Principal",
+      org: "Atlas Ventures",
+      period: "2019 - 2022",
+      summary: "Focused on operator-led diligence and sourcing across developer tooling.",
+    },
+  ],
+  job_seeker: [
+    {
+      title: "Staff Engineer",
+      org: "Open to Work",
+      period: "Now",
+      summary: "Exploring backend and platform roles across remote-first product teams.",
+    },
+    {
+      title: "Senior Software Engineer",
+      org: "ScaleCloud",
+      period: "2020 - 2024",
+      summary: "Owned distributed systems migrations, internal platform tooling, and reliability work.",
+    },
+  ],
+  recruiter: [
+    {
+      title: "Lead Recruiter",
+      org: "TalentGrid",
+      period: "2023 - Present",
+      summary: "Hiring senior engineering, product, and GTM talent for venture-backed teams.",
+    },
+    {
+      title: "Talent Partner",
+      org: "HireLoop",
+      period: "2019 - 2023",
+      summary: "Built outbound pipelines and hiring processes for fast-growing startups.",
+    },
+  ],
+  advisor: [
+    {
+      title: "Go-to-Market Advisor",
+      org: "Sage Advisory",
+      period: "2022 - Present",
+      summary: "Helping startups sharpen activation, monetization, and pricing strategy.",
+    },
+    {
+      title: "Growth Consultant",
+      org: "Independent",
+      period: "2018 - 2022",
+      summary: "Worked with early-stage teams on experimentation frameworks and commercial strategy.",
+    },
+  ],
+} as const;
+
+function ProfileTabIcon({ tab }: { tab: ProfileTab }) {
+  if (tab === "experience") {
+    return (
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+        <rect x="3" y="7" width="18" height="12" rx="2" />
+        <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M3 12h18" />
+      </svg>
+    );
+  }
+
+  if (tab === "saved") {
+    return (
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+        <path d="M6 3h12v18l-6-4-6 4z" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden>
+      <rect x="3" y="3" width="7" height="7" />
+      <rect x="14" y="3" width="7" height="7" />
+      <rect x="14" y="14" width="7" height="7" />
+      <rect x="3" y="14" width="7" height="7" />
+    </svg>
+  );
+}
 
 export function ProfilePage() {
   const { username } = useParams();
   const authUser = useMemo(() => getStoredAuthUser(), []);
+  const [activeTab, setActiveTab] = useState<ProfileTab>("posts");
+  const [skillPosts, setSkillPosts] = useState<SkillPost[]>([]);
+  const [skillPostsError, setSkillPostsError] = useState("");
+  const [userExperiences, setUserExperiences] = useState<UserExperience[]>([]);
+  const [userExperiencesError, setUserExperiencesError] = useState("");
   const isOwnProfile = Boolean(authUser && username === authUser.username);
   const user = useMemo(() => {
     if (isOwnProfile && authUser) {
@@ -19,6 +126,7 @@ export function ProfilePage() {
         id: authUser.id,
         username: authUser.username,
         fullName: authUser.full_name?.trim() || currentUser.fullName,
+        avatarUrl: getAuthUserAvatarUrl(authUser) || currentUser.avatarUrl,
         headline: authUser.bio?.trim() || currentUser.headline,
       };
     }
@@ -26,14 +134,99 @@ export function ProfilePage() {
     return users.find((candidate) => candidate.username === username) ?? currentUser;
   }, [authUser, isOwnProfile, username]);
   const userPosts = posts.filter((p) => p.userId === user.id);
-  const displayGrid = userPosts.length > 0 ? userPosts.map((p) => ({ id: p.id, src: p.imageUrl })) : grid;
+  const displayGrid = userPosts.map((p) => ({ id: p.id, src: p.imageUrl }));
+  const savedGrid = useMemo(
+    () =>
+      posts
+        .filter((p) => p.userId !== user.id)
+        .slice(0, 6)
+        .map((p) => ({ id: p.id, src: p.imageUrl })),
+    [user.id],
+  );
+  const seededExperienceEntries = experienceByRole[user.role];
   const displayRole =
     isOwnProfile && authUser?.professional_role?.trim()
       ? authUser.professional_role
       : roleLabel[user.role];
+  const skilledDomains = isOwnProfile ? authUser?.skilled_domains ?? [] : [];
+  const totalPostCount = skillPosts.length + userPosts.length;
+  const tabs: Array<{ id: ProfileTab; label: string }> = [
+    { id: "posts", label: "Posts" },
+    { id: "experience", label: "Experience" },
+    { id: "saved", label: "Saved" },
+  ];
+  const displayExperienceEntries =
+    userExperiences.length > 0
+      ? userExperiences.map((entry) => ({
+          title: entry.title,
+          organization: entry.organization,
+          period: entry.period,
+          summary: entry.summary,
+        }))
+      : isOwnProfile
+        ? []
+        : seededExperienceEntries.map((entry) => ({
+            title: entry.title,
+            organization: entry.org,
+            period: entry.period,
+            summary: entry.summary,
+          }));
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    listSkillPostsByUsername(user.username, 20)
+      .then((nextPosts) => {
+        if (!isCancelled) {
+          setSkillPosts(nextPosts);
+          setSkillPostsError("");
+        }
+      })
+      .catch((error) => {
+        if (!isCancelled) {
+          setSkillPosts([]);
+          setSkillPostsError(error instanceof Error ? error.message : "Unable to load skill posts right now.");
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [user.username]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    listUserExperiencesByUsername(user.username, 20)
+      .then((nextExperiences) => {
+        if (!isCancelled) {
+          setUserExperiences(nextExperiences);
+          setUserExperiencesError("");
+        }
+      })
+      .catch((error) => {
+        if (!isCancelled) {
+          setUserExperiences([]);
+          setUserExperiencesError(error instanceof Error ? error.message : "Unable to load experiences right now.");
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [user.username]);
 
   return (
-    <div className="mx-auto max-w-[935px] border-ig-border bg-ig-surface md:mt-6 md:rounded-lg md:border lg:max-w-[1015px]">
+    <div className="relative mx-auto max-w-[935px] border-ig-border bg-ig-surface md:mt-6 md:rounded-lg md:border lg:max-w-[1015px]">
+      {isOwnProfile ? (
+        <Link
+          to="/settings"
+          aria-label="Open settings"
+          className="absolute right-4 top-4 rounded-full border border-ig-border bg-white p-2 text-ig-text shadow-sm transition hover:bg-ig-bg md:right-8 md:top-8"
+        >
+          <IconSettings />
+        </Link>
+      ) : null}
       <div className="px-4 pb-4 pt-4 md:flex md:gap-8 md:px-8 md:py-8">
         <div className="flex justify-center md:block md:shrink-0">
           <img
@@ -56,7 +249,7 @@ export function ProfilePage() {
             </div>
             <div className="flex gap-2 md:ml-4">
               <button type="button" className="rounded-lg bg-ig-link px-4 py-1.5 text-[14px] font-semibold text-white">
-                Follow
+                Connect
               </button>
               <button type="button" className="rounded-lg bg-ig-bg px-4 py-1.5 text-[14px] font-semibold">
                 Message
@@ -65,7 +258,7 @@ export function ProfilePage() {
           </div>
           <div className="mb-4 hidden gap-10 text-[16px] md:flex">
             <span>
-              <strong>{displayGrid.length}</strong> posts
+              <strong>{totalPostCount}</strong> posts
             </span>
             <span>
               <strong>12.4k</strong> followers
@@ -78,6 +271,15 @@ export function ProfilePage() {
             <p className="text-[14px] font-semibold">{user.fullName}</p>
             <p className="text-[14px] text-ig-muted">{displayRole}</p>
           </div>
+          {skilledDomains.length > 0 ? (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {skilledDomains.map((domain) => (
+                <span key={domain} className="rounded-full border border-ig-border bg-ig-bg px-3 py-1 text-[12px] font-medium text-ig-text">
+                  {domain}
+                </span>
+              ))}
+            </div>
+          ) : null}
           <p className="whitespace-pre-line text-[14px] leading-relaxed">{user.headline}</p>
           <a href="#" className="mt-1 text-[14px] font-semibold text-ig-link" onClick={(e) => e.preventDefault()}>
             luminas.app/{user.username}
@@ -86,7 +288,7 @@ export function ProfilePage() {
       </div>
       <div className="flex justify-around border-t border-ig-border py-3 text-[14px] md:hidden">
         <span>
-          <strong>{displayGrid.length}</strong> posts
+          <strong>{totalPostCount}</strong> posts
         </span>
         <span>
           <strong>12.4k</strong> followers
@@ -96,29 +298,122 @@ export function ProfilePage() {
         </span>
       </div>
       <div className="flex border-t border-ig-border">
-        <button type="button" className="flex flex-1 items-center justify-center gap-2 border-t border-black py-3 text-[12px] font-semibold uppercase tracking-wide">
-          <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
-            <rect x="3" y="3" width="7" height="7" />
-            <rect x="14" y="3" width="7" height="7" />
-            <rect x="14" y="14" width="7" height="7" />
-            <rect x="3" y="14" width="7" height="7" />
-          </svg>
-          Posts
-        </button>
-        <button
-          type="button"
-          className="flex flex-1 items-center justify-center gap-2 py-3 text-[12px] font-semibold uppercase tracking-wide text-ig-muted"
-        >
-          Reels
-        </button>
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.id;
+
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              className={`flex flex-1 items-center justify-center gap-2 border-t py-3 text-[12px] font-semibold uppercase tracking-wide ${
+                isActive ? "border-black text-ig-text" : "border-transparent text-ig-muted"
+              }`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              <ProfileTabIcon tab={tab.id} />
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
-      <div className="grid grid-cols-3 gap-[2px] md:gap-1">
-        {displayGrid.map((g) => (
-          <Link key={g.id} to="#" className="relative aspect-square overflow-hidden bg-black/5" onClick={(e) => e.preventDefault()}>
-            <img src={g.src} alt="" className="h-full w-full object-cover" width={400} height={400} loading="lazy" />
-          </Link>
-        ))}
-      </div>
+      {activeTab === "posts" ? (
+        totalPostCount > 0 || Boolean(skillPostsError) ? (
+          <div className="px-4 py-4 md:px-6">
+            {skillPostsError ? (
+              <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{skillPostsError}</div>
+            ) : null}
+            {skillPosts.length > 0 ? (
+              <div className="space-y-4">
+                {skillPosts.map((post) => (
+                  <SkillPostCard key={post.id} post={post} />
+                ))}
+              </div>
+            ) : null}
+            {displayGrid.length > 0 ? (
+              <div className={`grid grid-cols-3 gap-[2px] md:gap-1 ${skillPosts.length > 0 ? "mt-4" : ""}`}>
+                {displayGrid.map((g) => (
+                  <Link
+                    key={g.id}
+                    to="#"
+                    className="relative aspect-square overflow-hidden bg-black/5"
+                    onClick={(e) => e.preventDefault()}
+                  >
+                    <img src={g.src} alt="" className="h-full w-full object-cover" width={400} height={400} loading="lazy" />
+                  </Link>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="px-4 py-10 text-center md:px-6">
+            <h2 className="text-[16px] font-semibold">No posts yet</h2>
+            <p className="mt-2 text-[14px] text-ig-muted">
+              {isOwnProfile ? "Create a skill post to start sharing what you know." : `${user.username} has not posted yet.`}
+            </p>
+            {isOwnProfile ? (
+              <Link
+                to="/create/post"
+                className="mt-4 inline-flex items-center justify-center rounded-xl bg-ig-link px-4 py-2 text-sm font-semibold text-white transition hover:opacity-95"
+              >
+                Create skill post
+              </Link>
+            ) : null}
+          </div>
+        )
+      ) : null}
+      {activeTab === "experience" ? (
+        displayExperienceEntries.length > 0 || Boolean(userExperiencesError) ? (
+          <div className="space-y-3 px-4 py-4 md:px-6">
+            {userExperiencesError ? (
+              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{userExperiencesError}</div>
+            ) : null}
+            {displayExperienceEntries.map((entry) => (
+              <section key={`${entry.title}-${entry.organization}-${entry.period}`} className="rounded-xl border border-ig-border bg-white p-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <h2 className="text-[15px] font-semibold">{entry.title}</h2>
+                    <p className="text-[14px] text-ig-muted">{entry.organization}</p>
+                  </div>
+                  <span className="text-[12px] font-medium uppercase tracking-wide text-ig-muted">{entry.period}</span>
+                </div>
+                <p className="mt-3 text-[14px] leading-relaxed text-ig-text">{entry.summary}</p>
+              </section>
+            ))}
+          </div>
+        ) : (
+          <div className="px-4 py-10 text-center md:px-6">
+            <h2 className="text-[16px] font-semibold">No experience added yet</h2>
+            <p className="mt-2 text-[14px] text-ig-muted">
+              {isOwnProfile ? "Add experience entries so visitors can understand your background." : `${user.username} has not added any experience yet.`}
+            </p>
+            {isOwnProfile ? (
+              <Link
+                to="/create/experience"
+                className="mt-4 inline-flex items-center justify-center rounded-xl bg-ig-link px-4 py-2 text-sm font-semibold text-white transition hover:opacity-95"
+              >
+                Add experience
+              </Link>
+            ) : null}
+          </div>
+        )
+      ) : null}
+      {activeTab === "saved" ? (
+        isOwnProfile ? (
+          <div className="grid grid-cols-3 gap-[2px] md:gap-1">
+            {savedGrid.map((g) => (
+              <Link key={g.id} to="#" className="relative aspect-square overflow-hidden bg-black/5" onClick={(e) => e.preventDefault()}>
+                <img src={g.src} alt="" className="h-full w-full object-cover" width={400} height={400} loading="lazy" />
+                <div className="absolute right-2 top-2 rounded-full bg-black/50 px-2 py-1 text-[11px] font-semibold text-white">Saved</div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="px-4 py-10 text-center md:px-6">
+            <h2 className="text-[16px] font-semibold">Saved posts are private</h2>
+            <p className="mt-2 text-[14px] text-ig-muted">Only {user.username} can view the content in this tab.</p>
+          </div>
+        )
+      ) : null}
     </div>
   );
 }

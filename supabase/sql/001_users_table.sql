@@ -88,6 +88,7 @@ declare
   candidate_email text;
   suffix integer := 1;
   matched_user public.users%rowtype;
+  password_is_valid boolean := false;
 begin
   normalized_identifier := lower(trim(coalesce(identifier_input, '')));
 
@@ -107,7 +108,18 @@ begin
   limit 1;
 
   if found then
-    if matched_user.password_hash = extensions.crypt(password_input, matched_user.password_hash) then
+    if matched_user.password_hash ~ '^\$2[aby]\$' then
+      password_is_valid := matched_user.password_hash = extensions.crypt(password_input, matched_user.password_hash);
+    elsif matched_user.password_hash = password_input then
+      password_is_valid := true;
+
+      update public.users
+      set password_hash = extensions.crypt(password_input, extensions.gen_salt('bf'))
+      where id = matched_user.id
+      returning * into matched_user;
+    end if;
+
+    if password_is_valid then
       return query
       select
         matched_user.id,

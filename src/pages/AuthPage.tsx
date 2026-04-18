@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  setStoredAuthUser,
+  persistAuthUserWithSettings,
   type AuthUser,
 } from "@/lib/appAuth";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
@@ -95,8 +95,8 @@ export function AuthPage({ onAuthenticated }: AuthPageProps) {
         throw new Error("No user data was returned from Supabase.");
       }
 
-      setStoredAuthUser(authenticatedUser);
-      onAuthenticated(authenticatedUser);
+      const userWithSettings = await persistAuthUserWithSettings(authenticatedUser);
+      onAuthenticated(userWithSettings);
       await loadUsers();
 
       if (authenticatedUser.was_created) {

@@ -6,39 +6,60 @@ import {
   getStoredAuthUser,
   isHumanVerificationRequired,
   isProfileSetupRequired,
+  persistAuthUserWithSettings,
   type AuthUser,
 } from "@/lib/appAuth";
 import { ExplorePage } from "@/pages/ExplorePage";
+import { CreateExperiencePage } from "@/pages/CreateExperiencePage";
+import { CreatePage } from "@/pages/CreatePage";
+import { CreateSkillPostPage } from "@/pages/CreateSkillPostPage";
 import { HomePage } from "@/pages/HomePage";
 import { HumanVerificationPage } from "@/pages/HumanVerificationPage";
 import { MessagesPage } from "@/pages/MessagesPage";
 import { ProfilePage } from "@/pages/ProfilePage";
 import { ProfileSetupPage } from "@/pages/ProfileSetupPage";
 import { ReelsPage } from "@/pages/ReelsPage";
-
-function getAuthenticatedRedirectPath(user: AuthUser) {
-  if (isProfileSetupRequired(user)) {
-    return "/complete-profile";
-  }
-
-  if (isHumanVerificationRequired(user)) {
-    return "/verify-human";
-  }
-
-  return "/";
-}
+import { SettingsPage } from "@/pages/SettingsPage";
 
 export default function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasCompletedFaceAuthenticationThisLoad, setHasCompletedFaceAuthenticationThisLoad] =
+    useState(false);
   const needsProfileSetup = authUser ? isProfileSetupRequired(authUser) : false;
   const needsHumanVerification = authUser
     ? isHumanVerificationRequired(authUser)
     : false;
+  const needsFaceAuthentication = authUser
+    ? !needsProfileSetup && !hasCompletedFaceAuthenticationThisLoad
+    : false;
 
   useEffect(() => {
-    setAuthUser(getStoredAuthUser());
-    setIsLoading(false);
+    const storedUser = getStoredAuthUser();
+    setAuthUser(storedUser);
+
+    if (!storedUser) {
+      setIsLoading(false);
+      return;
+    }
+
+    let isCancelled = false;
+
+    persistAuthUserWithSettings(storedUser)
+      .then((nextUser) => {
+        if (!isCancelled) {
+          setAuthUser(nextUser);
+        }
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   if (isLoading) {
@@ -56,7 +77,16 @@ export default function App() {
           path="/auth"
           element={
             authUser ? (
-              <Navigate to={getAuthenticatedRedirectPath(authUser)} replace />
+              <Navigate
+                to={
+                  needsProfileSetup
+                    ? "/complete-profile"
+                    : needsFaceAuthentication
+                      ? "/verify-human"
+                      : "/"
+                }
+                replace
+              />
             ) : (
               <AuthPage onAuthenticated={setAuthUser} />
             )
@@ -72,7 +102,10 @@ export default function App() {
                   onProfileCompleted={setAuthUser}
                 />
               ) : (
-                <Navigate to={getAuthenticatedRedirectPath(authUser)} replace />
+                <Navigate
+                  to={needsFaceAuthentication || needsHumanVerification ? "/verify-human" : "/"}
+                  replace
+                />
               )
             ) : (
               <Navigate to="/auth" replace />
@@ -85,10 +118,13 @@ export default function App() {
             authUser ? (
               needsProfileSetup ? (
                 <Navigate to="/complete-profile" replace />
-              ) : needsHumanVerification ? (
+              ) : needsFaceAuthentication || needsHumanVerification ? (
                 <HumanVerificationPage
                   authUser={authUser}
-                  onVerificationCompleted={setAuthUser}
+                  onVerificationCompleted={(user) => {
+                    setAuthUser(user);
+                    setHasCompletedFaceAuthenticationThisLoad(true);
+                  }}
                 />
               ) : (
                 <Navigate to="/" replace />
@@ -103,7 +139,7 @@ export default function App() {
             authUser ? (
               needsProfileSetup ? (
                 <Navigate to="/complete-profile" replace />
-              ) : needsHumanVerification ? (
+              ) : needsFaceAuthentication || needsHumanVerification ? (
                 <Navigate to="/verify-human" replace />
               ) : (
                 <MainLayout />
@@ -114,10 +150,14 @@ export default function App() {
           }
         >
           <Route index element={<HomePage />} />
+          <Route path="create" element={<CreatePage authUser={authUser!} />} />
+          <Route path="create/post" element={<CreateSkillPostPage authUser={authUser!} />} />
+          <Route path="create/experience" element={<CreateExperiencePage authUser={authUser!} />} />
           <Route path="explore" element={<ExplorePage />} />
           <Route path="reels" element={<ReelsPage />} />
           <Route path="messages" element={<MessagesPage />} />
           <Route path="profile/:username" element={<ProfilePage />} />
+          <Route path="settings" element={<SettingsPage authUser={authUser!} onSettingsUpdated={setAuthUser} />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

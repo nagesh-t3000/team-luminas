@@ -5,11 +5,19 @@ export type AuthUser = {
   full_name: string | null;
   bio?: string | null;
   professional_role?: string | null;
+  human_verification_status?: "required" | "pending" | "verified" | "failed" | null;
+  human_verification_provider?: string | null;
+  human_verified_at?: string | null;
+  human_verification_failure_reason?: string | null;
   created_at: string;
   was_created?: boolean;
 };
 
 const STORAGE_KEY = "luminas-auth-user";
+
+function hydrateAuthUserForNewSession(user: AuthUser) {
+  return user;
+}
 
 export function getStoredAuthUser() {
   const rawValue = localStorage.getItem(STORAGE_KEY);
@@ -19,7 +27,7 @@ export function getStoredAuthUser() {
   }
 
   try {
-    return JSON.parse(rawValue) as AuthUser;
+    return hydrateAuthUserForNewSession(JSON.parse(rawValue) as AuthUser);
   } catch {
     localStorage.removeItem(STORAGE_KEY);
     return null;
@@ -36,4 +44,8 @@ export function clearStoredAuthUser() {
 
 export function isProfileSetupRequired(user: AuthUser) {
   return !user.full_name?.trim();
+}
+
+export function isHumanVerificationRequired(user: AuthUser) {
+  return user.human_verification_status !== "verified";
 }

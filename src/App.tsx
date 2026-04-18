@@ -4,20 +4,37 @@ import { AuthPage } from "@/pages/AuthPage";
 import { MainLayout } from "@/layouts/MainLayout";
 import {
   getStoredAuthUser,
+  isHumanVerificationRequired,
   isProfileSetupRequired,
   type AuthUser,
 } from "@/lib/appAuth";
 import { ExplorePage } from "@/pages/ExplorePage";
 import { HomePage } from "@/pages/HomePage";
+import { HumanVerificationPage } from "@/pages/HumanVerificationPage";
 import { MessagesPage } from "@/pages/MessagesPage";
 import { ProfilePage } from "@/pages/ProfilePage";
 import { ProfileSetupPage } from "@/pages/ProfileSetupPage";
 import { ReelsPage } from "@/pages/ReelsPage";
 
+function getAuthenticatedRedirectPath(user: AuthUser) {
+  if (isProfileSetupRequired(user)) {
+    return "/complete-profile";
+  }
+
+  if (isHumanVerificationRequired(user)) {
+    return "/verify-human";
+  }
+
+  return "/";
+}
+
 export default function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const needsProfileSetup = authUser ? isProfileSetupRequired(authUser) : false;
+  const needsHumanVerification = authUser
+    ? isHumanVerificationRequired(authUser)
+    : false;
 
   useEffect(() => {
     setAuthUser(getStoredAuthUser());
@@ -39,7 +56,7 @@ export default function App() {
           path="/auth"
           element={
             authUser ? (
-              <Navigate to={needsProfileSetup ? "/complete-profile" : "/"} replace />
+              <Navigate to={getAuthenticatedRedirectPath(authUser)} replace />
             ) : (
               <AuthPage onAuthenticated={setAuthUser} />
             )
@@ -55,6 +72,25 @@ export default function App() {
                   onProfileCompleted={setAuthUser}
                 />
               ) : (
+                <Navigate to={getAuthenticatedRedirectPath(authUser)} replace />
+              )
+            ) : (
+              <Navigate to="/auth" replace />
+            )
+          }
+        />
+        <Route
+          path="/verify-human"
+          element={
+            authUser ? (
+              needsProfileSetup ? (
+                <Navigate to="/complete-profile" replace />
+              ) : needsHumanVerification ? (
+                <HumanVerificationPage
+                  authUser={authUser}
+                  onVerificationCompleted={setAuthUser}
+                />
+              ) : (
                 <Navigate to="/" replace />
               )
             ) : (
@@ -67,6 +103,8 @@ export default function App() {
             authUser ? (
               needsProfileSetup ? (
                 <Navigate to="/complete-profile" replace />
+              ) : needsHumanVerification ? (
+                <Navigate to="/verify-human" replace />
               ) : (
                 <MainLayout />
               )

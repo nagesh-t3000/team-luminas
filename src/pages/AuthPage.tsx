@@ -123,9 +123,10 @@ export function AuthPage({ onAuthenticated }: AuthPageProps) {
             Sign in before entering your Luminas home screen.
           </h1>
           <p className="mt-4 max-w-lg text-base leading-7 text-ig-muted">
-            Use your email or username plus password to connect through Supabase.
-            If the account does not exist yet, Luminas will create it directly in
-            the database without sending confirmation emails.
+            Use any email address or username plus password to connect through
+            Supabase. If the account does not exist yet, Luminas will create it
+            directly in the database without sending confirmation emails or
+            restricting company domains.
           </p>
 
           <div className="mt-8 rounded-3xl border border-ig-border bg-ig-surface p-5 shadow-sm">
@@ -179,7 +180,7 @@ export function AuthPage({ onAuthenticated }: AuthPageProps) {
               Luminas
             </h2>
             <p className="mt-2 text-sm text-ig-muted">
-              Login or create your account to continue.
+              Login or create your account with any email to continue.
             </p>
           </div>
 
@@ -192,7 +193,7 @@ export function AuthPage({ onAuthenticated }: AuthPageProps) {
                 type="text"
                 value={identifier}
                 onChange={(event) => setIdentifier(event.target.value)}
-                placeholder="Enter username or email"
+                placeholder="Enter any email or username"
                 className="w-full rounded-2xl border border-ig-border bg-ig-bg px-4 py-3 text-sm text-ig-text outline-none transition focus:border-ig-link focus:ring-2 focus:ring-[#0095f633]"
                 autoComplete="username"
                 required

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   IconCreate,
+  IconDashboard,
   IconHome,
   IconMessage,
   IconReels,
@@ -61,6 +62,14 @@ export function Sidebar() {
         <NavLink to="/create" className={linkClass}>
           <IconCreate />
           <span>Create</span>
+        </NavLink>
+        <NavLink to="/dashboard" className={linkClass}>
+          {({ isActive }) => (
+            <>
+              <IconDashboard active={isActive} />
+              <span>Dashboard</span>
+            </>
+          )}
         </NavLink>
         <NavLink to={`/profile/${profileUsername}`} className={linkClass}>
           <span className="flex h-6 w-6 shrink-0 overflow-hidden rounded-full border border-ig-border">

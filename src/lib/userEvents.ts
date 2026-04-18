@@ -1,4 +1,5 @@
 import type { ExploreUpdate } from "@/lib/exploreUpdates";
+import { getStoredAuthUser, isVerifiedProfile } from "@/lib/appAuth";
 
 const STORAGE_KEY = "luminas.userEvents";
 
@@ -115,7 +116,13 @@ function sortNewestFirst(events: StoredUserEvent[]) {
 }
 
 export function listUserEvents() {
-  return sortNewestFirst(readStoredUserEvents());
+  const authUser = getStoredAuthUser();
+
+  if (!authUser || !isVerifiedProfile(authUser)) {
+    return [];
+  }
+
+  return sortNewestFirst(readStoredUserEvents().filter((event) => event.author_id === authUser.id));
 }
 
 export async function createUserEvent({
@@ -129,10 +136,17 @@ export async function createUserEvent({
   tags = [],
   startsAt,
 }: CreateUserEventInput) {
+  const authUser = getStoredAuthUser();
+  const normalizedAuthorId = authorId.trim();
+
+  if (!authUser || authUser.id !== normalizedAuthorId || !isVerifiedProfile(authUser)) {
+    throw new Error("Only verified profiles can create events.");
+  }
+
   const now = new Date().toISOString();
   const createdEvent: StoredUserEvent = {
     id: typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : now,
-    author_id: authorId.trim(),
+    author_id: normalizedAuthorId,
     category: "event",
     source_name: sourceName.trim(),
     title: title.trim(),

@@ -53,7 +53,11 @@ as $$
     users.full_name as author_full_name,
     users.professional_role as author_professional_role,
     user_settings.profile_photo_url as author_profile_photo_url,
-    coalesce(users.human_verification_status = 'verified', false) as author_is_verified
+    coalesce(
+      users.human_verification_status = 'verified'
+      and user_settings.is_professional_account,
+      false
+    ) as author_is_verified
   from public.explore_updates
   left join public.users
     on users.id = explore_updates.author_id

@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { IconSparkles } from "@/components/Icons";
 import { currentUser } from "@/data/mockData";
-import { getAuthUserAvatarUrl, persistAuthUserWithSettings, type AuthUser } from "@/lib/appAuth";
+import { getAuthUserAvatarUrl, hasCompleteProfileBasics, persistAuthUserWithSettings, type AuthUser } from "@/lib/appAuth";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 type SettingsPageProps = {
@@ -30,15 +31,75 @@ const suggestionRoles = [
   { id: "advisor", label: "Advisors" },
 ] as const;
 
+const companyDomainOptions = [
+  "Startup",
+  "Fintech",
+  "AI",
+  "B2B SaaS",
+  "Developer Tools",
+  "Ecommerce",
+  "Healthcare",
+  "Edtech",
+  "Climate",
+  "Consumer",
+  "Marketplace",
+  "Enterprise Software",
+] as const;
+
 const MAX_PROFILE_PHOTO_DIMENSION = 512;
 const MAX_PROFILE_PHOTO_DATA_URL_LENGTH = 200_000;
+const MAX_SKILLED_DOMAINS = 8;
+const MAX_COMPANY_DOMAINS = 5;
 
-function parseDomains(value: string) {
+function parseCommaSeparatedList(
+  value: string,
+  limit: number,
+  normalizeItem: (item: string) => string = (item) => item.trim(),
+) {
+  const seen = new Set<string>();
+
   return value
     .split(",")
+    .map((item) => normalizeItem(item))
+    .filter(Boolean)
+    .filter((item) => {
+      if (seen.has(item)) {
+        return false;
+      }
+
+      seen.add(item);
+      return true;
+    })
+    .slice(0, limit);
+}
+
+function parseDomains(value: string) {
+  return parseCommaSeparatedList(value, MAX_SKILLED_DOMAINS);
+}
+
+function normalizeCompanyDomains(domains: string[]) {
+  const seen = new Set<string>();
+
+  return domains
     .map((domain) => domain.trim())
     .filter(Boolean)
-    .slice(0, 8);
+    .filter((domain) => {
+      if (seen.has(domain)) {
+        return false;
+      }
+
+      seen.add(domain);
+      return true;
+    })
+    .slice(0, MAX_COMPANY_DOMAINS);
+}
+
+function haveMatchingItems(first: string[], second: string[]) {
+  if (first.length !== second.length) {
+    return false;
+  }
+
+  return first.every((item, index) => item === second[index]);
 }
 
 function getErrorMessage(error: unknown, fallbackMessage: string) {
@@ -56,6 +117,44 @@ function getErrorMessage(error: unknown, fallbackMessage: string) {
   }
 
   return fallbackMessage;
+}
+
+function trimTextToLength(value: string, maxLength: number) {
+  return value.length <= maxLength ? value : `${value.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+}
+
+function buildAiProfileBio({
+  fullName,
+  profileType,
+  skilledDomains,
+  existingBio,
+}: {
+  fullName: string;
+  profileType: string;
+  skilledDomains: string[];
+  existingBio: string;
+}) {
+  const name = fullName.trim();
+  const role = profileType.trim();
+  const skills = skilledDomains.slice(0, 3);
+  const introParts = [
+    role ? `I'm a ${role.toLowerCase()}` : "",
+    skills.length > 0 ? `focused on ${skills.join(", ")}` : "",
+  ].filter(Boolean);
+  const intro = introParts.length > 0 ? `${introParts.join(" ")}.` : "";
+  const collaborationLine =
+    skills.length > 0
+      ? ` I enjoy connecting with people working across ${skills.join(", ")}.`
+      : " I enjoy connecting with thoughtful builders, operators, and collaborators.";
+
+  if (existingBio.trim()) {
+    const baseBio = existingBio.trim().replace(/\s+/g, " ");
+    const enhancedBio = `${baseBio}${baseBio.endsWith(".") ? "" : "."}${collaborationLine}`;
+    return trimTextToLength(enhancedBio, 280);
+  }
+
+  const lead = name ? `${name} here.` : "Here to connect.";
+  return trimTextToLength(`${lead} ${intro}${collaborationLine}`.replace(/\s+/g, " ").trim(), 280);
 }
 
 function loadImageFromFile(file: File) {
@@ -115,17 +214,91 @@ export function SettingsPage({ authUser, onSettingsUpdated }: SettingsPageProps)
   const [profileType, setProfileType] = useState(authUser.professional_role ?? "");
   const [bio, setBio] = useState(authUser.bio ?? "");
   const [domainInput, setDomainInput] = useState((authUser.skilled_domains ?? []).join(", "));
+  const [isProfessionalAccount, setIsProfessionalAccount] = useState(Boolean(authUser.is_professional_account));
+  const [selectedCompanyDomain, setSelectedCompanyDomain] = useState("");
+  const [companyDomains, setCompanyDomains] = useState<string[]>(() => normalizeCompanyDomains(authUser.company_domains ?? []));
   const [preferredSuggestions, setPreferredSuggestions] = useState<string[]>(authUser.preferred_suggestions ?? []);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState(getAuthUserAvatarUrl(authUser));
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   const parsedDomains = useMemo(() => parseDomains(domainInput), [domainInput]);
+  const profileBasicsChecklist = useMemo(
+    () => [
+      { id: "name", label: "Name", isComplete: Boolean(fullName.trim()) },
+      { id: "bio", label: "Bio", isComplete: Boolean(bio.trim()) },
+      { id: "skills", label: "Skills", isComplete: parsedDomains.length > 0 },
+    ],
+    [bio, fullName, parsedDomains],
+  );
+  const canEnhanceProfileVisibility = profileBasicsChecklist.every((item) => item.isComplete);
+  const savedProfileBasicsComplete = hasCompleteProfileBasics(authUser);
+  const hasUnsavedVisibilityBasics =
+    fullName.trim() !== (authUser.full_name?.trim() ?? "") ||
+    bio.trim() !== (authUser.bio?.trim() ?? "") ||
+    !haveMatchingItems(parsedDomains, authUser.skilled_domains ?? []);
+  const needsProfessionalAccountForVisibility = !isProfessionalAccount;
+  const hasUnsavedProfessionalAccountChange = isProfessionalAccount !== Boolean(authUser.is_professional_account);
+  const visibilityStatus = authUser.human_verification_status ?? "required";
+  const visibilityStatusLabel =
+    visibilityStatus === "verified"
+      ? "Verified"
+      : visibilityStatus === "pending"
+        ? "Pending review"
+        : visibilityStatus === "failed"
+          ? "Try again"
+          : "Not started";
+  const visibilityStatusClasses =
+    visibilityStatus === "verified"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : visibilityStatus === "pending"
+        ? "border-sky-200 bg-sky-50 text-sky-700"
+        : visibilityStatus === "failed"
+          ? "border-red-200 bg-red-50 text-red-700"
+          : "border-amber-200 bg-amber-50 text-amber-700";
+  const canEnhanceBioWithAi = Boolean(fullName.trim() || profileType.trim() || parsedDomains.length > 0 || bio.trim());
 
   function toggleSuggestionRole(roleId: string) {
     setPreferredSuggestions((current) =>
       current.includes(roleId) ? current.filter((role) => role !== roleId) : [...current, roleId],
     );
+  }
+
+  function addCompanyDomain(domain: string) {
+    const normalizedDomain = domain.trim();
+
+    if (
+      !normalizedDomain ||
+      companyDomains.includes(normalizedDomain) ||
+      companyDomains.length >= MAX_COMPANY_DOMAINS
+    ) {
+      return;
+    }
+
+    setCompanyDomains((current) => [...current, normalizedDomain]);
+    setSelectedCompanyDomain("");
+    setErrorMessage("");
+  }
+
+  function removeCompanyDomain(domain: string) {
+    setCompanyDomains((current) => current.filter((item) => item !== domain));
+  }
+
+  function handleEnhanceBioWithAi() {
+    if (!canEnhanceBioWithAi) {
+      setErrorMessage("Add your name, profile type, skills, or an existing bio before using AI.");
+      return;
+    }
+
+    setBio(
+      buildAiProfileBio({
+        fullName,
+        profileType,
+        skilledDomains: parsedDomains,
+        existingBio: bio,
+      }),
+    );
+    setErrorMessage("");
   }
 
   async function handlePhotoChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -147,6 +320,8 @@ export function SettingsPage({ authUser, onSettingsUpdated }: SettingsPageProps)
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    const normalizedCompanyDomains = normalizeCompanyDomains(companyDomains);
+
     if (!fullName.trim()) {
       setErrorMessage("Full name is required.");
       return;
@@ -154,6 +329,11 @@ export function SettingsPage({ authUser, onSettingsUpdated }: SettingsPageProps)
 
     if (!profileType.trim()) {
       setErrorMessage("Choose a profile type.");
+      return;
+    }
+
+    if (isProfessionalAccount && normalizedCompanyDomains.length === 0) {
+      setErrorMessage("Add at least one company domain for a professional account.");
       return;
     }
 
@@ -181,6 +361,8 @@ export function SettingsPage({ authUser, onSettingsUpdated }: SettingsPageProps)
         full_name: fullName.trim(),
         bio: bio.trim(),
         professional_role: profileType.trim(),
+        is_professional_account: isProfessionalAccount,
+        company_domains: isProfessionalAccount ? normalizedCompanyDomains : [],
       };
 
       const profileUpdate = await supabase.rpc("complete_user_profile", {
@@ -198,6 +380,8 @@ export function SettingsPage({ authUser, onSettingsUpdated }: SettingsPageProps)
         user_id_input: authUser.id,
         profile_photo_url_input: normalizedProfilePhotoUrl,
         skilled_domains_input: parsedDomains,
+        is_professional_account_input: isProfessionalAccount,
+        company_domains_input: isProfessionalAccount ? normalizedCompanyDomains : [],
         preferred_suggestions_input: preferredSuggestions,
       });
 
@@ -284,7 +468,9 @@ export function SettingsPage({ authUser, onSettingsUpdated }: SettingsPageProps)
           <section className="grid gap-6 rounded-3xl border border-ig-border bg-ig-bg p-5 md:grid-cols-[180px_1fr]">
             <div>
               <h2 className="text-lg font-semibold text-ig-text">Public profile</h2>
-              <p className="mt-2 text-sm leading-6 text-ig-muted">Keep your identity, role, and domain expertise up to date.</p>
+              <p className="mt-2 text-sm leading-6 text-ig-muted">
+                Keep your identity, role, and domain expertise up to date.
+              </p>
             </div>
             <div className="space-y-4">
               <label className="block">
@@ -316,6 +502,79 @@ export function SettingsPage({ authUser, onSettingsUpdated }: SettingsPageProps)
                 </select>
               </label>
 
+              <section className="rounded-2xl border border-ig-border bg-white p-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="max-w-xl">
+                    <h3 className="text-sm font-semibold text-ig-text">Professional account</h3>
+                    <p className="mt-1 text-sm leading-6 text-ig-muted">
+                      Turn this on for company-backed profiles. Company focus areas stay separate from your personal
+                      skill domains.
+                    </p>
+                  </div>
+                  <label className="inline-flex cursor-pointer items-center gap-3 self-start">
+                    <input
+                      type="checkbox"
+                      checked={isProfessionalAccount}
+                      onChange={(event) => setIsProfessionalAccount(event.target.checked)}
+                      className="peer sr-only"
+                    />
+                    <span className="text-sm font-medium text-ig-text">
+                      {isProfessionalAccount ? "Enabled" : "Disabled"}
+                    </span>
+                    <span className="relative h-7 w-12 rounded-full bg-ig-border transition peer-checked:bg-ig-link">
+                      <span className="absolute left-1 top-1 h-5 w-5 rounded-full bg-white transition peer-checked:translate-x-5" />
+                    </span>
+                  </label>
+                </div>
+
+                {isProfessionalAccount ? (
+                  <div className="mt-4 space-y-3">
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-medium text-ig-text">Company domains</span>
+                      <select
+                        value={selectedCompanyDomain}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setSelectedCompanyDomain(value);
+
+                          if (value) {
+                            addCompanyDomain(value);
+                          }
+                        }}
+                        className="w-full rounded-2xl border border-ig-border bg-ig-bg px-4 py-3 text-sm text-ig-text outline-none transition focus:border-ig-link focus:ring-2 focus:ring-[#0095f633]"
+                      >
+                        <option value="">Select a company domain</option>
+                        {companyDomainOptions.map((option) => (
+                          <option key={option} value={option} disabled={companyDomains.includes(option)}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <p className="text-xs text-ig-muted">
+                      Choose up to 5 company domains for your professional account.
+                    </p>
+                    {companyDomains.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {companyDomains.map((domain) => (
+                          <button
+                            key={domain}
+                            type="button"
+                            onClick={() => removeCompanyDomain(domain)}
+                            className="rounded-full border border-ig-border bg-white px-3 py-1 text-xs font-medium text-ig-text transition hover:bg-ig-bg"
+                          >
+                            {domain} x
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    {companyDomains.length >= MAX_COMPANY_DOMAINS ? (
+                      <p className="text-xs text-ig-muted">Maximum of {MAX_COMPANY_DOMAINS} company domains selected.</p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
+
               <label className="block">
                 <span className="mb-2 block text-sm font-medium text-ig-text">Specific domains you are skilled in</span>
                 <input
@@ -339,6 +598,21 @@ export function SettingsPage({ authUser, onSettingsUpdated }: SettingsPageProps)
 
               <label className="block">
                 <span className="mb-2 block text-sm font-medium text-ig-text">Bio</span>
+                <div className="mb-2 flex items-start justify-between gap-3">
+                  <p className="text-xs text-ig-muted">
+                    Use AI to draft or tighten your bio from the name, role, and skills in this form.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleEnhanceBioWithAi}
+                    disabled={!canEnhanceBioWithAi}
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-ig-link bg-white text-ig-link transition hover:bg-[#0095f60d] disabled:cursor-not-allowed disabled:opacity-70"
+                    aria-label="Enhance profile bio with AI"
+                    title="Enhance profile bio with AI"
+                  >
+                    <IconSparkles />
+                  </button>
+                </div>
                 <textarea
                   value={bio}
                   onChange={(event) => setBio(event.target.value)}
@@ -347,6 +621,131 @@ export function SettingsPage({ authUser, onSettingsUpdated }: SettingsPageProps)
                   maxLength={280}
                 />
               </label>
+            </div>
+          </section>
+
+          <section className="grid gap-6 rounded-3xl border border-ig-border bg-ig-bg p-5 md:grid-cols-[180px_1fr]">
+            <div>
+              <h2 className="text-lg font-semibold text-ig-text">Profile visibility</h2>
+              <p className="mt-2 text-sm leading-6 text-ig-muted">
+                Unlock a more trusted, easier-to-discover profile after your basics are complete.
+              </p>
+            </div>
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <span
+                  className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${visibilityStatusClasses}`}
+                >
+                  {visibilityStatusLabel}
+                </span>
+                <p className="text-sm text-ig-muted">
+                  Complete your name, bio, and at least one skill before starting the visibility step.
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                {profileBasicsChecklist.map((item) => (
+                  <div
+                    key={item.id}
+                    className={`rounded-2xl border px-4 py-3 text-sm ${
+                      item.isComplete
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : "border-amber-200 bg-amber-50 text-amber-800"
+                    }`}
+                  >
+                    <p className="font-semibold">{item.label}</p>
+                    <p className="mt-1 text-xs uppercase tracking-[0.18em]">
+                      {item.isComplete ? "Complete" : "Required"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {!canEnhanceProfileVisibility ? (
+                <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5">
+                  <h3 className="text-base font-semibold text-amber-900">Complete your profile basics first</h3>
+                  <p className="mt-2 text-sm leading-6 text-amber-800">
+                    Add your name, a short bio, and at least one skill in this form to unlock the visibility upgrade.
+                  </p>
+                </div>
+              ) : needsProfessionalAccountForVisibility ? (
+                <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5">
+                  <h3 className="text-base font-semibold text-amber-900">Enable professional account first</h3>
+                  <p className="mt-2 text-sm leading-6 text-amber-800">
+                    Turn on your professional account, then save settings to continue to verification and profile visibility.
+                  </p>
+                </div>
+              ) : hasUnsavedVisibilityBasics || hasUnsavedProfessionalAccountChange || !savedProfileBasicsComplete ? (
+                <div className="rounded-3xl border border-sky-200 bg-sky-50 p-5">
+                  <h3 className="text-base font-semibold text-sky-900">Save settings to continue</h3>
+                  <p className="mt-2 text-sm leading-6 text-sky-800">
+                    Your visibility requirements are ready in the form. Save these settings first, then start verification.
+                  </p>
+                </div>
+              ) : (
+                <div
+                  className={`rounded-3xl border p-5 ${
+                    visibilityStatus === "verified"
+                      ? "border-emerald-200 bg-emerald-50"
+                      : visibilityStatus === "pending"
+                        ? "border-sky-200 bg-sky-50"
+                        : visibilityStatus === "failed"
+                          ? "border-red-200 bg-red-50"
+                          : "border-ig-border bg-white"
+                  }`}
+                >
+                  <h3
+                    className={`text-base font-semibold ${
+                      visibilityStatus === "verified"
+                        ? "text-emerald-900"
+                        : visibilityStatus === "pending"
+                          ? "text-sky-900"
+                          : visibilityStatus === "failed"
+                            ? "text-red-900"
+                            : "text-ig-text"
+                    }`}
+                  >
+                    {visibilityStatus === "verified"
+                      ? "Your profile visibility is already enhanced"
+                      : visibilityStatus === "pending"
+                        ? "Verification is in progress"
+                        : visibilityStatus === "failed"
+                          ? "Verification needs another attempt"
+                          : "Ready to enhance your profile visibility"}
+                  </h3>
+                  <p
+                    className={`mt-2 text-sm leading-6 ${
+                      visibilityStatus === "verified"
+                        ? "text-emerald-800"
+                        : visibilityStatus === "pending"
+                          ? "text-sky-800"
+                          : visibilityStatus === "failed"
+                            ? "text-red-800"
+                            : "text-ig-muted"
+                    }`}
+                  >
+                    {visibilityStatus === "verified"
+                      ? "Your account has already completed the verification step that helps your profile look more trusted across Luminas."
+                      : visibilityStatus === "pending"
+                        ? "Your verification is already underway. Open the verification page to review the latest status."
+                        : visibilityStatus === "failed"
+                          ? "Open verification to retry the live-human check and restore enhanced visibility."
+                          : "Start the live-human verification step to strengthen trust signals and improve your profile visibility."}
+                  </p>
+                  <Link
+                    to="/verification"
+                    className="mt-4 inline-flex items-center justify-center rounded-xl bg-ig-link px-4 py-2 text-sm font-semibold text-white transition hover:opacity-95"
+                  >
+                    {visibilityStatus === "verified"
+                      ? "View verification status"
+                      : visibilityStatus === "pending"
+                        ? "Review verification"
+                        : visibilityStatus === "failed"
+                          ? "Retry verification"
+                          : "Enhance visibility"}
+                  </Link>
+                </div>
+              )}
             </div>
           </section>
 

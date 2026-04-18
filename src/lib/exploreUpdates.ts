@@ -45,6 +45,7 @@ function isMissingExploreUpdatesRpcError(error: unknown) {
 
   return (
     message.includes("Could not find the function public.list_explore_updates") ||
+    message.includes("Could not find the function public.list_authored_explore_updates") ||
     message.includes("schema cache")
   );
 }
@@ -108,6 +109,34 @@ export async function listExploreUpdates(
     limit_count: limit,
     category_input: category ?? null,
     search_input: searchQuery?.trim() || null,
+  });
+
+  if (error) {
+    if (isMissingExploreUpdatesRpcError(error)) {
+      return [];
+    }
+
+    throw new Error(getErrorMessage(error));
+  }
+
+  return Array.isArray(data)
+    ? data.map((update) => normalizeExploreUpdate(update as ExploreUpdate))
+    : [];
+}
+
+export async function listAuthoredExploreUpdates(
+  authorId: string,
+  category?: ExploreUpdateCategory,
+  limit = 24,
+) {
+  if (!supabase || !isSupabaseConfigured) {
+    return [];
+  }
+
+  const { data, error } = await supabase.rpc("list_authored_explore_updates", {
+    author_id_input: authorId,
+    category_input: category ?? null,
+    limit_count: limit,
   });
 
   if (error) {

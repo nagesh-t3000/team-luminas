@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { StoryRail } from "@/components/StoryRail";
 import { SkillPostCard } from "@/components/SkillPostCard";
 import { Suggestions } from "@/components/Suggestions";
+import { getStoredAuthUser } from "@/lib/appAuth";
 import { listExploreUpdates, type ExploreUpdate } from "@/lib/exploreUpdates";
 import { listPublicUsers, type PublicUser } from "@/lib/publicUsers";
 import { listSkillPosts, type SkillPost } from "@/lib/skillPosts";
 
 export function HomePage() {
+  const authUser = useMemo(() => getStoredAuthUser(), []);
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [events, setEvents] = useState<ExploreUpdate[]>([]);
   const [skillPosts, setSkillPosts] = useState<SkillPost[]>([]);
@@ -15,7 +17,7 @@ export function HomePage() {
   useEffect(() => {
     let isCancelled = false;
 
-    Promise.all([listPublicUsers(12), listExploreUpdates(4, "event"), listSkillPosts(20)])
+    Promise.all([listPublicUsers(12), listExploreUpdates(4, "event"), listSkillPosts(20, authUser?.id)])
       .then(([nextUsers, nextEvents, nextPosts]) => {
         if (!isCancelled) {
           setUsers(nextUsers);
@@ -33,7 +35,7 @@ export function HomePage() {
     return () => {
       isCancelled = true;
     };
-  }, []);
+  }, [authUser?.id]);
 
   return (
     <div className="mx-auto flex w-full max-w-[935px] justify-center gap-8 lg:max-w-[1015px] lg:gap-16">

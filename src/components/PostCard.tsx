@@ -32,11 +32,6 @@ export function PostCard({ post }: { post: Post }) {
               <Link to={`/profile/${author.username}`} className="truncate text-[14px] font-semibold hover:text-ig-muted">
                 {author.username}
               </Link>
-              {author.verified ? (
-                <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-ig-link text-[10px] text-white" title="Verified">
-                  ✓
-                </span>
-              ) : null}
             </div>
             <div className="truncate text-[12px] text-ig-muted">
               {roleLabel[author.role]}

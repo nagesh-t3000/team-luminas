@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { buildFallbackAvatar } from "@/lib/publicUsers";
 import { type ExploreUpdate } from "@/lib/exploreUpdates";
 import { formatRelativePostTime } from "@/lib/skillPosts";
@@ -59,17 +60,15 @@ export function EventFeedCard({ update }: { update: ExploreUpdate }) {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               {authorUsername ? (
-                <Link to={`/profile/${authorUsername}`} className="text-[15px] font-semibold text-ig-text hover:text-ig-muted">
-                  {authorUsername}
-                </Link>
+                <span className="flex items-center gap-1.5">
+                  <Link to={`/profile/${authorUsername}`} className="text-[15px] font-semibold text-ig-text hover:text-ig-muted">
+                    {authorUsername}
+                  </Link>
+                  {update.author_is_verified ? <VerifiedBadge /> : null}
+                </span>
               ) : (
                 <span className="text-[15px] font-semibold text-ig-text">{authorDisplayName}</span>
               )}
-              {update.author_is_verified ? (
-                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-ig-link text-[10px] text-white" title="Verified">
-                  ✓
-                </span>
-              ) : null}
               <span className="rounded-full border border-ig-border bg-ig-bg px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
                 Event
               </span>

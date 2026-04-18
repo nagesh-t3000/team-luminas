@@ -7,7 +7,6 @@ export interface User {
   avatarUrl: string;
   role: UserRole;
   headline: string;
-  verified?: boolean;
 }
 
 export interface Story {
@@ -40,7 +39,6 @@ export const currentUser: User = {
   avatarUrl: "https://i.pravatar.cc/150?img=12",
   role: "founder",
   headline: "B2B SaaS · raising seed",
-  verified: true,
 };
 
 export const users: User[] = [
@@ -52,7 +50,6 @@ export const users: User[] = [
     avatarUrl: "https://i.pravatar.cc/150?img=33",
     role: "investor",
     headline: "Series A–C · fintech & infra",
-    verified: true,
   },
   {
     id: "u2",
@@ -69,7 +66,6 @@ export const users: User[] = [
     avatarUrl: "https://i.pravatar.cc/150?img=68",
     role: "recruiter",
     headline: "Hiring: ML, product, GTM",
-    verified: true,
   },
   {
     id: "u4",
@@ -110,7 +106,6 @@ export const users: User[] = [
     avatarUrl: "https://i.pravatar.cc/150?img=52",
     role: "advisor",
     headline: "GTM & pricing for startups",
-    verified: true,
   },
 ];
 

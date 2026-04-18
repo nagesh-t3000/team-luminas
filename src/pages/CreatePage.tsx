@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import type { AuthUser } from "@/lib/appAuth";
+import { isVerifiedProfile, type AuthUser } from "@/lib/appAuth";
 
 type CreatePageProps = {
   authUser: AuthUser;
@@ -12,6 +12,7 @@ const createOptions = [
       "Create a meetup, workshop, demo day, or other community event so people can discover it in Explore.",
     href: "/create/event",
     cta: "Create event",
+    requiresVerifiedProfile: true,
   },
   {
     title: "Skill post",
@@ -19,6 +20,7 @@ const createOptions = [
       "Share a short post with text, images, or videos so your expertise can appear in the home feed and on your profile.",
     href: "/create/post",
     cta: "Create skill post",
+    requiresVerifiedProfile: false,
   },
   {
     title: "Experience",
@@ -26,10 +28,21 @@ const createOptions = [
       "Add a role, company, time period, and summary so your profile experience tab reflects your real background.",
     href: "/create/experience",
     cta: "Add experience",
+    requiresVerifiedProfile: false,
+  },
+  {
+    title: "Ad campaign",
+    description:
+      "Boost one of your existing events or skill posts with a budget, duration, and audience plan so more members discover it.",
+    href: "/create/ad",
+    cta: "Create ad",
+    requiresVerifiedProfile: true,
   },
 ] as const;
 
 export function CreatePage({ authUser }: CreatePageProps) {
+  const canCreateEvents = isVerifiedProfile(authUser);
+
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 md:px-6 md:py-10">
       <div className="rounded-[28px] border border-ig-border bg-ig-surface p-6 shadow-sm md:p-8">
@@ -52,18 +65,45 @@ export function CreatePage({ authUser }: CreatePageProps) {
         </div>
 
         <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {createOptions.map((option) => (
-            <section key={option.title} className="rounded-3xl border border-ig-border bg-ig-bg p-6">
+          {createOptions.map((option) => {
+            const isDisabled = option.requiresVerifiedProfile && !canCreateEvents;
+            const disabledMessage =
+              option.href === "/create/ad"
+                ? "Only verified profiles can create ads."
+                : "Only verified profiles can create events.";
+
+            return (
+            <section
+              key={option.title}
+              className={`rounded-3xl border p-6 ${
+                isDisabled ? "border-amber-200 bg-amber-50" : "border-ig-border bg-ig-bg"
+              }`}
+            >
               <h2 className="text-xl font-semibold text-ig-text">{option.title}</h2>
-              <p className="mt-3 text-sm leading-6 text-ig-muted">{option.description}</p>
-              <Link
-                to={option.href}
-                className="mt-6 inline-flex items-center justify-center rounded-2xl bg-ig-link px-5 py-3 text-sm font-semibold text-white transition hover:opacity-95"
-              >
-                {option.cta}
-              </Link>
+              <p className={`mt-3 text-sm leading-6 ${isDisabled ? "text-amber-800" : "text-ig-muted"}`}>
+                {option.description}
+              </p>
+              {isDisabled ? (
+                <>
+                  <p className="mt-4 text-sm font-medium text-amber-900">{disabledMessage}</p>
+                  <Link
+                    to="/settings"
+                    className="mt-6 inline-flex items-center justify-center rounded-2xl bg-ig-link px-5 py-3 text-sm font-semibold text-white transition hover:opacity-95"
+                  >
+                    Open settings
+                  </Link>
+                </>
+              ) : (
+                <Link
+                  to={option.href}
+                  className="mt-6 inline-flex items-center justify-center rounded-2xl bg-ig-link px-5 py-3 text-sm font-semibold text-white transition hover:opacity-95"
+                >
+                  {option.cta}
+                </Link>
+              )}
             </section>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

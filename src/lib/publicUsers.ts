@@ -7,6 +7,7 @@ type PublicUserRecord = {
   full_name: string | null;
   bio: string | null;
   professional_role: string | null;
+  is_verified?: boolean | null;
   created_at: string;
 };
 
@@ -79,6 +80,7 @@ function normalizePublicUser(user: PublicUserRecord): PublicUser {
     full_name: fullName,
     bio: user.bio?.trim() || null,
     professional_role: user.professional_role?.trim() || null,
+    is_verified: Boolean(user.is_verified),
     avatar_url: buildFallbackAvatar(fullName || username || user.email),
   };
 }

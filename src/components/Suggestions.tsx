@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { currentUser } from "@/data/mockData";
 import { getAuthUserAvatarUrl, getStoredAuthUser } from "@/lib/appAuth";
 import { listConnectedUsernames, subscribeToConnections, toggleConnection } from "@/lib/connections";
@@ -14,6 +15,9 @@ export function Suggestions({ users = [] }: SuggestionsProps) {
   const profileUsername = authUser?.username || currentUser.username;
   const displayName = authUser?.full_name?.trim() || currentUser.fullName;
   const avatarUrl = getAuthUserAvatarUrl(authUser) || currentUser.avatarUrl;
+  const isAuthUserVerified = Boolean(
+    authUser?.is_professional_account && authUser.human_verification_status === "verified",
+  );
   const [connectedUsernames, setConnectedUsernames] = useState<string[]>([]);
   const [pendingUsernames, setPendingUsernames] = useState<string[]>([]);
   const displayedSuggestions = users
@@ -68,9 +72,12 @@ export function Suggestions({ users = [] }: SuggestionsProps) {
         <div className="flex min-w-0 items-center gap-3">
           <img src={avatarUrl} alt="" className="h-14 w-14 shrink-0 rounded-full object-cover" width={56} height={56} />
           <div className="min-w-0">
-            <Link to={`/profile/${profileUsername}`} className="block truncate text-[14px] font-semibold hover:text-ig-muted">
-              {profileUsername}
-            </Link>
+            <span className="flex items-center gap-1.5">
+              <Link to={`/profile/${profileUsername}`} className="block truncate text-[14px] font-semibold hover:text-ig-muted">
+                {profileUsername}
+              </Link>
+              {isAuthUserVerified ? <VerifiedBadge size={14} /> : null}
+            </span>
             <span className="block truncate text-[14px] text-ig-muted">{displayName}</span>
           </div>
         </div>
@@ -91,9 +98,12 @@ export function Suggestions({ users = [] }: SuggestionsProps) {
               <div className="flex min-w-0 items-center gap-3">
                 <img src={user.avatar_url} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" width={32} height={32} />
                 <div className="min-w-0">
-                  <Link to={`/profile/${user.username}`} className="block truncate text-[14px] font-semibold hover:text-ig-muted">
-                    {user.username}
-                  </Link>
+                  <span className="flex items-center gap-1.5">
+                    <Link to={`/profile/${user.username}`} className="block truncate text-[14px] font-semibold hover:text-ig-muted">
+                      {user.username}
+                    </Link>
+                    {user.is_verified ? <VerifiedBadge size={14} /> : null}
+                  </span>
                   <span className="block truncate text-[12px] text-ig-muted">
                     {user.professional_role || "Luminas member"}
                   </span>

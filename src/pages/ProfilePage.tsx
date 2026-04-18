@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { IconSettings } from "@/components/Icons";
 import { SkillPostCard } from "@/components/SkillPostCard";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { currentUser, posts, roleLabel, users } from "@/data/mockData";
 import { listUserExperiencesByUsername, type UserExperience } from "@/lib/experiences";
 import { getAuthUserAvatarUrl, getStoredAuthUser } from "@/lib/appAuth";
@@ -136,7 +137,6 @@ export function ProfilePage() {
         avatarUrl: currentUser.avatarUrl,
         role: currentUser.role,
         headline: "",
-        verified: false,
       },
     [matchedMockUser, username],
   );
@@ -160,7 +160,6 @@ export function ProfilePage() {
         avatarUrl: publicProfile.avatar_url,
         role: fallbackUser.role,
         headline: publicProfile.bio?.trim() || fallbackUser.headline,
-        verified: fallbackUser.verified,
       };
     }
 
@@ -210,6 +209,9 @@ export function ProfilePage() {
           }));
   const isConnected = connectedUsernames.includes(user.username);
   const formattedConnectionCount = new Intl.NumberFormat("en-US").format(connectionCount);
+  const isVerifiedProfile = isOwnProfile
+    ? Boolean(authUser?.is_professional_account && authUser.human_verification_status === "verified")
+    : Boolean(publicProfile?.is_verified);
 
   useEffect(() => {
     if (isOwnProfile || !username) {
@@ -268,7 +270,7 @@ export function ProfilePage() {
   useEffect(() => {
     let isCancelled = false;
 
-    listSkillPostsByUsername(user.username, 20)
+    listSkillPostsByUsername(user.username, 20, authUser?.id)
       .then((nextPosts) => {
         if (!isCancelled) {
           setSkillPosts(nextPosts);
@@ -357,12 +359,10 @@ export function ProfilePage() {
         <div className="mt-4 min-w-0 flex-1 md:mt-0">
           <div className="mb-4 flex flex-col items-stretch gap-3 md:flex-row md:items-center">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-[20px] font-normal">{user.username}</h1>
-              {user.verified ? (
-                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-ig-link text-xs text-white" title="Verified">
-                  ✓
-                </span>
-              ) : null}
+              <span className="flex items-center gap-1.5">
+                <h1 className="text-[20px] font-normal">{user.username}</h1>
+                {isVerifiedProfile ? <VerifiedBadge size={18} /> : null}
+              </span>
             </div>
             {!isOwnProfile ? (
               <div className="flex gap-2 md:ml-4">

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { currentUser } from "@/data/mockData";
 import { EventFeedCard } from "@/components/EventFeedCard";
-import { getAuthUserAvatarUrl, getStoredAuthUser } from "@/lib/appAuth";
+import { getAuthUserAvatarUrl, getStoredAuthUser, isVerifiedProfile } from "@/lib/appAuth";
 import type { PublicUser } from "@/lib/publicUsers";
 import type { ExploreUpdate } from "@/lib/exploreUpdates";
 
@@ -28,6 +28,7 @@ function readRawPayloadString(payload: Record<string, unknown>, key: string) {
 
 export function StoryRail({ users = [], events = [] }: StoryRailProps) {
   const authUser = getStoredAuthUser();
+  const canCreateEvents = isVerifiedProfile(authUser);
   const avatarUrl = getAuthUserAvatarUrl(authUser) || currentUser.avatarUrl;
   const [selectedEvent, setSelectedEvent] = useState<ExploreUpdate | null>(null);
   const usersByUsername = useMemo(() => {
@@ -103,19 +104,32 @@ export function StoryRail({ users = [], events = [] }: StoryRailProps) {
     <>
       <div className="mb-3 rounded-lg border border-ig-border bg-ig-surface px-4 py-3 md:border-0 md:bg-transparent md:px-0 md:py-0">
         <div className="scrollbar-hide flex gap-4 overflow-x-auto pb-1">
-        <Link to="/create/event" className="flex w-[72px] shrink-0 flex-col items-center gap-1" aria-label="Create event">
-          <div className="relative transition-transform hover:scale-[1.02]">
-            <div className="story-ring">
-              <div className="story-ring-inner">
-                <img src={avatarUrl} alt="" className="h-14 w-14 rounded-full object-cover" width={56} height={56} />
+          {canCreateEvents ? (
+            <Link to="/create/event" className="flex w-[72px] shrink-0 flex-col items-center gap-1" aria-label="Create event">
+              <div className="relative transition-transform hover:scale-[1.02]">
+                <div className="story-ring">
+                  <div className="story-ring-inner">
+                    <img src={avatarUrl} alt="" className="h-14 w-14 rounded-full object-cover" width={56} height={56} />
+                  </div>
+                </div>
+                <span className="absolute bottom-0 right-0 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-ig-link text-xs font-bold text-white">
+                  +
+                </span>
               </div>
-            </div>
-            <span className="absolute bottom-0 right-0 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-ig-link text-xs font-bold text-white">
-              +
-            </span>
-          </div>
-          <span className="max-w-[72px] truncate text-center text-[12px] text-ig-text">Create event</span>
-        </Link>
+              <span className="max-w-[72px] truncate text-center text-[12px] text-ig-text">Create event</span>
+            </Link>
+          ) : (
+            <Link to="/create" className="flex w-[72px] shrink-0 flex-col items-center gap-1 opacity-80" aria-label="Verified profiles only">
+              <div className="relative">
+                <div className="story-ring grayscale">
+                  <div className="story-ring-inner">
+                    <img src={avatarUrl} alt="" className="h-14 w-14 rounded-full object-cover" width={56} height={56} />
+                  </div>
+                </div>
+              </div>
+              <span className="max-w-[72px] text-center text-[12px] leading-4 text-ig-muted">Verified only</span>
+            </Link>
+          )}
           {visibleEventStories.map((story) => (
             <button
               key={story.event.id}

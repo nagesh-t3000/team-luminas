@@ -4,7 +4,8 @@ import type {
   NormalizedLandmark,
 } from "@mediapipe/tasks-vision";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { persistAuthUserWithSettings, type AuthUser } from "@/lib/appAuth";
+import { Link } from "react-router-dom";
+import { hasCompleteProfileBasics, persistAuthUserWithSettings, type AuthUser } from "@/lib/appAuth";
 import { createBackendFaceIdentity } from "@/lib/faceVerification";
 import { getFaceLandmarker } from "@/lib/faceLandmarker";
 import {
@@ -400,6 +401,7 @@ export function HumanVerificationPage({
 
     return "Supabase is not configured yet. Add the anon key in .env first.";
   }, []);
+  const canStartVerification = useMemo(() => hasCompleteProfileBasics(authUser), [authUser]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -1002,164 +1004,198 @@ export function HumanVerificationPage({
         </section>
 
         <section className="rounded-[32px] border border-ig-border bg-ig-surface p-8 shadow-sm">
-          <h2 className="text-2xl font-bold tracking-tight text-ig-text">
-            Verify your humanity
-          </h2>
-          <p className="mt-2 text-sm text-ig-muted">
-            Any email can sign in. This step is only about confirming one real
-            live human face as quickly as possible.
-          </p>
+          {!canStartVerification ? (
+            <>
+              <h2 className="text-2xl font-bold tracking-tight text-ig-text">
+                Complete your profile first
+              </h2>
+              <p className="mt-2 text-sm text-ig-muted">
+                Add your name, bio, and at least one skill before starting the visibility verification flow.
+              </p>
 
-          <div className="mt-6 rounded-3xl border border-ig-border bg-ig-bg p-5">
-            <ol className="space-y-3 text-sm leading-6 text-ig-muted">
-              <li>1. Use the front camera in even lighting.</li>
-              <li>2. Keep one uncovered face in frame without masks, hats, or dark glasses.</li>
-              <li>3. Hold still, blink once, then turn slightly left or right.</li>
-            </ol>
-          </div>
-
-          <div className="mt-6 overflow-hidden rounded-3xl border border-ig-border bg-black">
-            <div className="relative aspect-[3/4] w-full">
-              <video
-                ref={videoRef}
-                className={`h-full w-full object-cover transition-opacity ${
-                  isCameraActive ? "opacity-100" : "opacity-0"
-                }`}
-                autoPlay
-                playsInline
-                muted
-              />
-
-              {!isCameraActive && (
-                <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-white/75">
-                  {isDetectorReady
-                    ? "Camera preview will appear here after you allow access."
-                    : "Loading live-human detector before camera analysis starts."}
+              <div className="mt-6 rounded-3xl border border-amber-200 bg-amber-50 p-5">
+                <h3 className="text-base font-semibold text-amber-900">Profile basics are still required</h3>
+                <p className="mt-2 text-sm leading-6 text-amber-800">
+                  Go back to settings, complete the missing profile fields, save them, and then return here to enhance your profile visibility.
+                </p>
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                  <Link
+                    to="/settings"
+                    className="inline-flex items-center justify-center rounded-xl bg-ig-link px-4 py-2 text-sm font-semibold text-white transition hover:opacity-95"
+                  >
+                    Open settings
+                  </Link>
+                  <Link
+                    to={`/profile/${authUser.username}`}
+                    className="inline-flex items-center justify-center rounded-xl border border-amber-200 px-4 py-2 text-sm font-semibold text-amber-900 transition hover:bg-amber-100"
+                  >
+                    Back to profile
+                  </Link>
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <h2 className="text-2xl font-bold tracking-tight text-ig-text">
+                Verify your humanity
+              </h2>
+              <p className="mt-2 text-sm text-ig-muted">
+                Any email can sign in. This step is only about confirming one real
+                live human face as quickly as possible.
+              </p>
 
-          <div className="mt-4 rounded-3xl border border-ig-border bg-ig-bg p-5">
-            <div className="flex items-center justify-between gap-4">
-              <div>
+              <div className="mt-6 rounded-3xl border border-ig-border bg-ig-bg p-5">
+                <ol className="space-y-3 text-sm leading-6 text-ig-muted">
+                  <li>1. Use the front camera in even lighting.</li>
+                  <li>2. Keep one uncovered face in frame without masks, hats, or dark glasses.</li>
+                  <li>3. Hold still, blink once, then turn slightly left or right.</li>
+                </ol>
+              </div>
+
+              <div className="mt-6 overflow-hidden rounded-3xl border border-ig-border bg-black">
+                <div className="relative aspect-[3/4] w-full">
+                  <video
+                    ref={videoRef}
+                    className={`h-full w-full object-cover transition-opacity ${
+                      isCameraActive ? "opacity-100" : "opacity-0"
+                    }`}
+                    autoPlay
+                    playsInline
+                    muted
+                  />
+
+                  {!isCameraActive && (
+                    <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-white/75">
+                      {isDetectorReady
+                        ? "Camera preview will appear here after you allow access."
+                        : "Loading live-human detector before camera analysis starts."}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-3xl border border-ig-border bg-ig-bg p-5">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-ig-muted">
+                      Face check
+                    </p>
+                    <p className="mt-1 text-base font-semibold text-ig-text">
+                      {getFaceStatusLabel(faceStatus)}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-ig-muted">
+                      Readiness
+                    </p>
+                    <p className="mt-1 text-base font-semibold text-ig-text">
+                      {Math.round(faceProgress * 100)}%
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 h-2 overflow-hidden rounded-full bg-white">
+                  <div
+                    className="h-full rounded-full bg-ig-link transition-all duration-150"
+                    style={{ width: `${Math.round(faceProgress * 100)}%` }}
+                  />
+                </div>
+
+                <p className="mt-4 text-sm leading-6 text-ig-muted">{faceMessage}</p>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-ig-border bg-white px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-ig-muted">
+                      Liveness score
+                    </p>
+                    <p className="mt-1 text-base font-semibold text-ig-text">
+                      {Math.round(livenessScore * 100)}%
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-ig-border bg-white px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-ig-muted">
+                      Anti-spoof score
+                    </p>
+                    <p className="mt-1 text-base font-semibold text-ig-text">
+                      {Math.round(antiSpoofScore * 100)}%
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-3xl border border-ig-border bg-ig-bg p-5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-ig-muted">
-                  Face check
+                  Live-human checklist
                 </p>
-                <p className="mt-1 text-base font-semibold text-ig-text">
-                  {getFaceStatusLabel(faceStatus)}
-                </p>
+                <div className="mt-4 space-y-3 text-sm text-ig-text">
+                  {renderChecklistItem("Single face only", liveSignals.singleFace)}
+                  {renderChecklistItem("Framing and stability", liveSignals.framing)}
+                  {renderChecklistItem("Natural blink detected", liveSignals.blink)}
+                  {renderChecklistItem("Slight head turn detected", liveSignals.turn)}
+                  {renderChecklistItem(
+                    "Face identity samples captured",
+                    isDuplicateScreeningReady || isVerificationLocked,
+                    "Pending",
+                  )}
+                </div>
               </div>
-              <div className="text-right">
-                <p className="text-xs font-semibold uppercase tracking-wide text-ig-muted">
-                  Readiness
-                </p>
-                <p className="mt-1 text-base font-semibold text-ig-text">
-                  {Math.round(faceProgress * 100)}%
-                </p>
+
+              <div className="mt-6 space-y-3">
+                {(errorMessage || configMessage) && (
+                  <div className="rounded-2xl border border-ig-border bg-ig-bg px-4 py-3 text-sm text-ig-muted">
+                    {errorMessage || configMessage}
+                  </div>
+                )}
+
+                {infoMessage && (
+                  <div className="rounded-2xl border border-ig-border bg-ig-bg px-4 py-3 text-sm text-ig-text">
+                    {infoMessage}
+                  </div>
+                )}
               </div>
-            </div>
 
-            <div className="mt-4 h-2 overflow-hidden rounded-full bg-white">
-              <div
-                className="h-full rounded-full bg-ig-link transition-all duration-150"
-                style={{ width: `${Math.round(faceProgress * 100)}%` }}
-              />
-            </div>
+              <div className="mt-6 space-y-3">
+                <button
+                  type="button"
+                  className="w-full rounded-2xl border border-ig-border bg-ig-bg px-4 py-3 text-sm font-semibold text-ig-text transition hover:border-ig-link disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isCameraLoading}
+                  onClick={isCameraActive ? stopCamera : startCamera}
+                >
+                  {isCameraLoading
+                    ? "Starting camera..."
+                    : isCameraActive
+                      ? "Turn off camera"
+                      : "Turn on front camera"}
+                </button>
 
-            <p className="mt-4 text-sm leading-6 text-ig-muted">{faceMessage}</p>
+                <button
+                  type="button"
+                  className="w-full rounded-2xl bg-ig-link px-4 py-3 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isSubmitting || !isCameraActive || !isFaceReady}
+                  onClick={
+                    humanVerificationMode === "backend"
+                      ? handleDemoVerification
+                      : handleProviderStart
+                  }
+                >
+                  {isSubmitting
+                    ? "Checking live human..."
+                    : humanVerificationMode === "backend"
+                      ? "Complete backend face verification"
+                      : "Start provider verification"}
+                </button>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl border border-ig-border bg-white px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-ig-muted">
-                  Liveness score
-                </p>
-                <p className="mt-1 text-base font-semibold text-ig-text">
-                  {Math.round(livenessScore * 100)}%
-                </p>
+                <button
+                  type="button"
+                  className="w-full rounded-2xl border border-ig-border bg-ig-bg px-4 py-3 text-sm font-semibold text-ig-text transition hover:border-ig-link disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isRefreshing}
+                  onClick={handleRefreshStatus}
+                >
+                  {isRefreshing ? "Refreshing status..." : "Refresh verification status"}
+                </button>
               </div>
-              <div className="rounded-2xl border border-ig-border bg-white px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-ig-muted">
-                  Anti-spoof score
-                </p>
-                <p className="mt-1 text-base font-semibold text-ig-text">
-                  {Math.round(antiSpoofScore * 100)}%
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 rounded-3xl border border-ig-border bg-ig-bg p-5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-ig-muted">
-              Live-human checklist
-            </p>
-            <div className="mt-4 space-y-3 text-sm text-ig-text">
-              {renderChecklistItem("Single face only", liveSignals.singleFace)}
-              {renderChecklistItem("Framing and stability", liveSignals.framing)}
-              {renderChecklistItem("Natural blink detected", liveSignals.blink)}
-              {renderChecklistItem("Slight head turn detected", liveSignals.turn)}
-              {renderChecklistItem(
-                "Face identity samples captured",
-                isDuplicateScreeningReady || isVerificationLocked,
-                "Pending",
-              )}
-            </div>
-          </div>
-
-          <div className="mt-6 space-y-3">
-            {(errorMessage || configMessage) && (
-              <div className="rounded-2xl border border-ig-border bg-ig-bg px-4 py-3 text-sm text-ig-muted">
-                {errorMessage || configMessage}
-              </div>
-            )}
-
-            {infoMessage && (
-              <div className="rounded-2xl border border-ig-border bg-ig-bg px-4 py-3 text-sm text-ig-text">
-                {infoMessage}
-              </div>
-            )}
-          </div>
-
-          <div className="mt-6 space-y-3">
-            <button
-              type="button"
-              className="w-full rounded-2xl border border-ig-border bg-ig-bg px-4 py-3 text-sm font-semibold text-ig-text transition hover:border-ig-link disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={isCameraLoading}
-              onClick={isCameraActive ? stopCamera : startCamera}
-            >
-              {isCameraLoading
-                ? "Starting camera..."
-                : isCameraActive
-                  ? "Turn off camera"
-                  : "Turn on front camera"}
-            </button>
-
-            <button
-              type="button"
-              className="w-full rounded-2xl bg-ig-link px-4 py-3 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={isSubmitting || !isCameraActive || !isFaceReady}
-              onClick={
-                humanVerificationMode === "backend"
-                  ? handleDemoVerification
-                  : handleProviderStart
-              }
-            >
-              {isSubmitting
-                ? "Checking live human..."
-                : humanVerificationMode === "backend"
-                  ? "Complete backend face verification"
-                  : "Start provider verification"}
-            </button>
-
-            <button
-              type="button"
-              className="w-full rounded-2xl border border-ig-border bg-ig-bg px-4 py-3 text-sm font-semibold text-ig-text transition hover:border-ig-link disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={isRefreshing}
-              onClick={handleRefreshStatus}
-            >
-              {isRefreshing ? "Refreshing status..." : "Refresh verification status"}
-            </button>
-          </div>
+            </>
+          )}
         </section>
       </div>
     </div>

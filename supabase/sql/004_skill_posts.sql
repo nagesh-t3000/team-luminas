@@ -2,8 +2,6 @@ drop function if exists public.create_skill_post(uuid, text, text, jsonb);
 drop function if exists public.create_skill_post(uuid, text, text);
 drop function if exists public.list_skill_posts(integer);
 drop function if exists public.list_skill_posts_by_username(text, integer);
-drop function if exists public.is_valid_skill_post_media_items(jsonb);
-
 create or replace function public.is_valid_skill_post_media_items(media_items_input jsonb)
 returns boolean
 language sql
@@ -190,7 +188,10 @@ begin
     users.full_name as author_full_name,
     users.professional_role as author_professional_role,
     user_settings.profile_photo_url as author_profile_photo_url,
-    users.human_verification_status = 'verified' as author_is_verified
+    (
+      users.human_verification_status = 'verified'
+      and coalesce(user_settings.is_professional_account, false)
+    ) as author_is_verified
   from inserted_post
   join public.users
     on users.id = inserted_post.author_id
@@ -228,7 +229,10 @@ as $$
     users.full_name as author_full_name,
     users.professional_role as author_professional_role,
     user_settings.profile_photo_url as author_profile_photo_url,
-    users.human_verification_status = 'verified' as author_is_verified
+    (
+      users.human_verification_status = 'verified'
+      and coalesce(user_settings.is_professional_account, false)
+    ) as author_is_verified
   from public.skill_posts
   join public.users
     on users.id = skill_posts.author_id
@@ -270,7 +274,10 @@ as $$
     users.full_name as author_full_name,
     users.professional_role as author_professional_role,
     user_settings.profile_photo_url as author_profile_photo_url,
-    users.human_verification_status = 'verified' as author_is_verified
+    (
+      users.human_verification_status = 'verified'
+      and coalesce(user_settings.is_professional_account, false)
+    ) as author_is_verified
   from public.skill_posts
   join public.users
     on users.id = skill_posts.author_id

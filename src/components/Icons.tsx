@@ -97,6 +97,17 @@ export function IconCreate() {
   );
 }
 
+export function IconDashboard({ active }: { active?: boolean }) {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" width="24" height="24" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="4.5" rx="1.5" />
+      <rect x="14" y="10.5" width="7" height="10.5" rx="1.5" />
+      <rect x="3" y="13" width="7" height="8" rx="1.5" />
+    </svg>
+  );
+}
+
 export function IconSettings() {
   return (
     <svg aria-hidden viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
@@ -112,6 +123,16 @@ export function IconMore() {
       <circle cx="6" cy="12" r="1.8" />
       <circle cx="12" cy="12" r="1.8" />
       <circle cx="18" cy="12" r="1.8" />
+    </svg>
+  );
+}
+
+export function IconSparkles() {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 3l1.7 4.8L18.5 9l-4.8 1.2L12 15l-1.7-4.8L5.5 9l4.8-1.2z" />
+      <path d="M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8z" />
+      <path d="M5 14l.8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8z" />
     </svg>
   );
 }

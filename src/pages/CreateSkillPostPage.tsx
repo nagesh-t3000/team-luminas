@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { AuthUser } from "@/lib/appAuth";
 import { filesToSkillPostMediaItems, MAX_POST_MEDIA_ITEMS } from "@/lib/postMedia";
+import { generateSkillPostCopy } from "@/lib/skillPostAi";
 import { createSkillPost, type SkillPostMediaItem } from "@/lib/skillPosts";
 
 type CreateSkillPostPageProps = {
@@ -35,6 +36,8 @@ export function CreateSkillPostPage({ authUser }: CreateSkillPostPageProps) {
   const [mediaItems, setMediaItems] = useState<SkillPostMediaItem[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isProcessingMedia, setIsProcessingMedia] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
   const trimmedContent = content.trim();
@@ -69,6 +72,36 @@ export function CreateSkillPostPage({ authUser }: CreateSkillPostPageProps) {
 
   function removeMediaItem(index: number) {
     setMediaItems((current) => current.filter((_, currentIndex) => currentIndex !== index));
+  }
+
+  async function handleAiAssist(mode: "suggest" | "enhance") {
+    if (!selectedSkill.trim()) {
+      setErrorMessage("Choose one of your saved skills first.");
+      return;
+    }
+
+    if (mode === "enhance" && !trimmedContent) {
+      setErrorMessage("Write a draft first, or use Suggest content to start.");
+      return;
+    }
+
+    setIsGenerating(true);
+    setErrorMessage("");
+
+    try {
+      const nextContent = await generateSkillPostCopy({
+        skill: selectedSkill,
+        content: trimmedContent,
+        prompt: aiPrompt.trim(),
+        mode,
+      });
+
+      setContent(nextContent.slice(0, MAX_POST_LENGTH));
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsGenerating(false);
+    }
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -196,8 +229,52 @@ export function CreateSkillPostPage({ authUser }: CreateSkillPostPageProps) {
                     maxLength={MAX_POST_LENGTH}
                   />
                 </label>
+                <div className="rounded-2xl border border-ig-border bg-white p-4">
+                  <div className="flex flex-col gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-ig-text">AI suggestion</h3>
+                      <p className="mt-1 text-xs leading-5 text-ig-muted">
+                        Generate a draft from your selected skill, or enhance the text you already wrote.
+                      </p>
+                    </div>
+                    <label className="block">
+                      <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-ig-muted">
+                        Optional direction
+                      </span>
+                      <input
+                        type="text"
+                        value={aiPrompt}
+                        onChange={(event) => setAiPrompt(event.target.value.slice(0, 240))}
+                        placeholder="Example: Keep it concise and highlight product design for SaaS founders."
+                        className="w-full rounded-2xl border border-ig-border bg-ig-bg px-4 py-3 text-sm text-ig-text outline-none transition focus:border-ig-link focus:ring-2 focus:ring-[#0095f633]"
+                      />
+                    </label>
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleAiAssist("suggest")}
+                        disabled={isGenerating || isSubmitting}
+                        className="inline-flex items-center justify-center rounded-xl border border-ig-link px-4 py-2 text-sm font-semibold text-ig-link transition hover:bg-[#0095f60d] disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        {isGenerating ? "Thinking..." : "Suggest content"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAiAssist("enhance")}
+                        disabled={isGenerating || isSubmitting || !trimmedContent}
+                        className="inline-flex items-center justify-center rounded-xl border border-ig-border px-4 py-2 text-sm font-semibold text-ig-text transition hover:bg-ig-bg disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        Enhance content
+                      </button>
+                    </div>
+                  </div>
+                </div>
                 <div className="flex items-center justify-between text-xs text-ig-muted">
-                  <span>Your post will appear in the home feed and on your profile.</span>
+                  <span>
+                    {isGenerating
+                      ? "Generating copy for your selected skill..."
+                      : "Your post will appear in the home feed and on your profile."}
+                  </span>
                   <span>{remainingCharacters} characters left</span>
                 </div>
               </div>
@@ -301,7 +378,7 @@ export function CreateSkillPostPage({ authUser }: CreateSkillPostPageProps) {
               </Link>
               <button
                 type="submit"
-                disabled={isSubmitting || isProcessingMedia || !hasPostContent}
+                disabled={isSubmitting || isProcessingMedia || isGenerating || !hasPostContent}
                 className="inline-flex items-center justify-center rounded-2xl bg-ig-link px-5 py-3 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {isSubmitting ? "Publishing..." : "Publish skill post"}

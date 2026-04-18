@@ -9,6 +9,8 @@ export type AuthUser = {
   professional_role?: string | null;
   profile_photo_url?: string | null;
   skilled_domains?: string[] | null;
+  is_professional_account?: boolean | null;
+  company_domains?: string[] | null;
   preferred_suggestions?: string[] | null;
   human_verification_status?: "required" | "pending" | "verified" | "failed" | null;
   human_verification_provider?: string | null;
@@ -24,21 +26,29 @@ type UserSettingsRecord = {
   user_id: string;
   profile_photo_url: string | null;
   skilled_domains: string[] | null;
+  is_professional_account: boolean | null;
+  company_domains: string[] | null;
   preferred_suggestions: string[] | null;
   created_at: string;
   updated_at: string;
 };
 
+function normalizeDomainList(domains: string[] | null | undefined, maxItems: number) {
+  return Array.isArray(domains)
+    ? domains
+        .map((domain) => (typeof domain === "string" ? domain.trim() : ""))
+        .filter(Boolean)
+        .slice(0, maxItems)
+    : [];
+}
+
 function normalizeAuthUser(user: AuthUser) {
   return {
     ...user,
     profile_photo_url: typeof user.profile_photo_url === "string" ? user.profile_photo_url : null,
-    skilled_domains: Array.isArray(user.skilled_domains)
-      ? user.skilled_domains
-          .map((domain) => (typeof domain === "string" ? domain.trim() : ""))
-          .filter(Boolean)
-          .slice(0, 8)
-      : [],
+    skilled_domains: normalizeDomainList(user.skilled_domains, 8),
+    is_professional_account: Boolean(user.is_professional_account),
+    company_domains: normalizeDomainList(user.company_domains, 5),
     preferred_suggestions: Array.isArray(user.preferred_suggestions)
       ? user.preferred_suggestions
           .map((role) => (typeof role === "string" ? role.trim() : ""))
@@ -56,6 +66,8 @@ function mergeAuthUserWithSettings(user: AuthUser, settings?: UserSettingsRecord
     ...user,
     profile_photo_url: settings.profile_photo_url,
     skilled_domains: settings.skilled_domains,
+    is_professional_account: settings.is_professional_account,
+    company_domains: settings.company_domains,
     preferred_suggestions: settings.preferred_suggestions,
   });
 }
@@ -105,6 +117,28 @@ export function getAuthUserAvatarUrl(user: Pick<AuthUser, "profile_photo_url"> |
   return user?.profile_photo_url?.trim() || null;
 }
 
+export function isVerifiedProfile(
+  user:
+    | Pick<AuthUser, "is_professional_account" | "human_verification_status">
+    | null
+    | undefined,
+) {
+  return Boolean(user?.is_professional_account && user.human_verification_status === "verified");
+}
+
+export function hasCompleteProfileBasics(
+  user:
+    | Pick<AuthUser, "full_name" | "bio" | "skilled_domains">
+    | null
+    | undefined,
+) {
+  const fullName = user?.full_name?.trim();
+  const bio = user?.bio?.trim();
+  const skilledDomains = normalizeDomainList(user?.skilled_domains, 8);
+
+  return Boolean(fullName && bio && skilledDomains.length > 0);
+}
+
 export async function getUserSettings(userId: string) {
   if (!supabase || !isSupabaseConfigured) {
     return null;
@@ -150,8 +184,4 @@ export async function persistAuthUserWithSettings(user: AuthUser) {
 
 export function isProfileSetupRequired(user: AuthUser) {
   return !user.full_name?.trim();
-}
-
-export function isHumanVerificationRequired(user: AuthUser) {
-  return user.human_verification_status !== "verified";
 }

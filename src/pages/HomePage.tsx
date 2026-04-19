@@ -38,9 +38,16 @@ export function HomePage() {
   }, [authUser?.id]);
 
   return (
-    <div className="mx-auto flex w-full max-w-[935px] justify-center gap-8 lg:max-w-[1015px] lg:gap-16">
+    <div className="mx-auto flex w-full max-w-[1220px] justify-center gap-8 xl:gap-10">
+      <div className="hidden lg:block lg:w-[96px] lg:shrink-0">
+        <div className="sticky top-8">
+          <StoryRail users={users} events={events} orientation="vertical" />
+        </div>
+      </div>
       <div className="w-full min-w-0 md:max-w-[630px]">
-        <StoryRail users={users} events={events} />
+        <div className="lg:hidden">
+          <StoryRail users={users} events={events} />
+        </div>
         <div className="md:space-y-0">
           {errorMessage ? (
             <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{errorMessage}</div>

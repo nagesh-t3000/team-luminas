@@ -145,6 +145,10 @@ declare
   normalized_audience_summary text;
   normalized_status text;
   normalized_audience_labels text[];
+  owner_is_professional_account boolean := false;
+  owner_company_domains text[] := '{}'::text[];
+  owner_is_human_verified boolean := false;
+  owner_company_verification_status text := 'required';
 begin
   if owner_id_input is null then
     raise exception 'A user id is required to create an ad.';
@@ -167,12 +171,45 @@ begin
     '{}'::text[]
   );
 
-  if not exists (
-    select 1
-    from public.users
-    where users.id = owner_id_input
-  ) then
+  select
+    coalesce(user_settings.is_professional_account, false),
+    coalesce(user_settings.company_domains, '{}'::text[]),
+    users.human_verification_status = 'verified',
+    coalesce(users.company_verification_status, 'required')
+  into
+    owner_is_professional_account,
+    owner_company_domains,
+    owner_is_human_verified,
+    owner_company_verification_status
+  from public.users
+  left join public.user_settings
+    on user_settings.user_id = users.id
+  where users.id = owner_id_input;
+
+  if not found then
     raise exception 'User not found.';
+  end if;
+
+  if not owner_is_professional_account then
+    raise exception 'Only professional accounts can create ads.';
+  end if;
+
+  if coalesce(array_length(owner_company_domains, 1), 0) = 0 then
+    raise exception 'Add at least one company domain before creating ads.';
+  end if;
+
+  if not owner_is_human_verified then
+    raise exception 'Complete human verification before creating ads.';
+  end if;
+
+  if owner_company_verification_status <> 'approved' then
+    if owner_company_verification_status = 'pending' then
+      raise exception 'Company verification is pending admin review.';
+    elsif owner_company_verification_status = 'rejected' then
+      raise exception 'Company verification was rejected. Update your website or domains in settings and resubmit.';
+    else
+      raise exception 'Submit your company website for admin review before creating ads.';
+    end if;
   end if;
 
   if normalized_target_type not in ('event', 'skill_post') then

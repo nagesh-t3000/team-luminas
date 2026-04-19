@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { IconSparkles } from "@/components/Icons";
 import { createAdCampaign, type AdCampaignStatus, type AdCampaignTargetType } from "@/lib/adCampaigns";
-import { isVerifiedProfile, type AuthUser } from "@/lib/appAuth";
+import { generateAdAudience } from "@/lib/adCampaignAi";
+import { canCreateAds as canCreateAdsForUser, type AuthUser } from "@/lib/appAuth";
 import { listAuthoredExploreUpdates } from "@/lib/exploreUpdates";
 import { listSkillPostsByUsername } from "@/lib/skillPosts";
+import { listUserEvents } from "@/lib/userEvents";
 
 type CreateAdPageProps = {
   authUser: AuthUser;
@@ -79,7 +82,7 @@ function parseAudienceLabels(value: string) {
 
 export function CreateAdPage({ authUser }: CreateAdPageProps) {
   const navigate = useNavigate();
-  const canCreateAds = isVerifiedProfile(authUser);
+  const canCreateAds = canCreateAdsForUser(authUser);
   const [targetType, setTargetType] = useState<AdCampaignTargetType>("event");
   const [eventTargets, setEventTargets] = useState<BoostTarget[]>([]);
   const [skillPostTargets, setSkillPostTargets] = useState<BoostTarget[]>([]);
@@ -90,6 +93,7 @@ export function CreateAdPage({ authUser }: CreateAdPageProps) {
   const [audienceSummary, setAudienceSummary] = useState("");
   const [audienceLabelsInput, setAudienceLabelsInput] = useState("");
   const [isLoadingTargets, setIsLoadingTargets] = useState(true);
+  const [isGeneratingAudience, setIsGeneratingAudience] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -107,15 +111,32 @@ export function CreateAdPage({ authUser }: CreateAdPageProps) {
 
     Promise.all([
       listAuthoredExploreUpdates(authUser.id, "event", 20),
+      Promise.resolve(listUserEvents()),
       listSkillPostsByUsername(authUser.username, 20),
     ])
-      .then(([events, skillPosts]) => {
+      .then(([authoredEvents, createdEvents, skillPosts]) => {
         if (isCancelled) {
           return;
         }
 
+        const nextEventTargets = Array.from(
+          [...createdEvents, ...authoredEvents].reduce((eventMap, event) => {
+            if (!eventMap.has(event.id)) {
+              eventMap.set(event.id, event);
+            }
+
+            return eventMap;
+          }, new Map<string, (typeof createdEvents)[number] | (typeof authoredEvents)[number]>()),
+        )
+          .map(([, event]) => event)
+          .sort((left, right) => {
+            const leftTime = new Date(left.published_at).getTime();
+            const rightTime = new Date(right.published_at).getTime();
+            return rightTime - leftTime;
+          });
+
         setEventTargets(
-          events.map((event) => ({
+          nextEventTargets.map((event) => ({
             id: event.id,
             title: event.title,
             subtitle: event.location || "Remote",
@@ -166,10 +187,38 @@ export function CreateAdPage({ authUser }: CreateAdPageProps) {
 
   const audienceLabels = useMemo(() => parseAudienceLabels(audienceLabelsInput), [audienceLabelsInput]);
   const selectedTarget = availableTargets.find((target) => target.id === selectedTargetId) || null;
+  const selectedObjectiveOption = objectiveOptions.find((option) => option.id === selectedObjective) || objectiveOptions[0];
+
+  async function handleGenerateAudience() {
+    if (!selectedTarget) {
+      setErrorMessage(`Choose one of your ${targetType === "event" ? "events" : "skill posts"} first.`);
+      return;
+    }
+
+    setIsGeneratingAudience(true);
+    setErrorMessage("");
+
+    try {
+      const generatedAudience = await generateAdAudience({
+        targetType,
+        title: selectedTarget.title,
+        subtitle: selectedTarget.subtitle,
+        description: selectedTarget.description,
+        objective: selectedObjectiveOption.label,
+      });
+
+      setAudienceSummary(generatedAudience.audienceSummary.slice(0, MAX_AUDIENCE_SUMMARY_LENGTH));
+      setAudienceLabelsInput(generatedAudience.audienceLabels.join(", "));
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsGeneratingAudience(false);
+    }
+  }
 
   async function submitCampaign(status: AdCampaignStatus) {
     if (!canCreateAds) {
-      setErrorMessage("Only verified professional accounts can create ads.");
+      setErrorMessage("Only company-approved professional accounts can create ads.");
       return;
     }
 
@@ -244,9 +293,10 @@ export function CreateAdPage({ authUser }: CreateAdPageProps) {
 
         {!canCreateAds ? (
           <div className="mt-8 rounded-3xl border border-amber-200 bg-amber-50 p-5">
-            <h2 className="text-lg font-semibold text-amber-900">Verified professional accounts only</h2>
+            <h2 className="text-lg font-semibold text-amber-900">Company-approved professional accounts only</h2>
             <p className="mt-2 text-sm leading-6 text-amber-800">
-              Ads are limited to verified professional accounts so boosted content stays relevant and trustworthy.
+              Ads are limited to professional accounts with human verification, at least one company domain, and admin
+              approval after reviewing the company website.
             </p>
             <div className="mt-4 flex flex-col gap-3 sm:flex-row">
               <Link
@@ -427,6 +477,23 @@ export function CreateAdPage({ authUser }: CreateAdPageProps) {
                 </p>
               </div>
               <div className="space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-xs text-ig-muted">
+                    {isGeneratingAudience
+                      ? "Generating audience notes from your selected content and campaign objective..."
+                      : "Use AI to draft the audience summary and labels from the selected content and objective."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleGenerateAudience}
+                    disabled={isSubmitting || isLoadingTargets || isGeneratingAudience || !selectedTarget}
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-ig-link bg-white text-ig-link transition hover:bg-[#0095f60d] disabled:cursor-not-allowed disabled:opacity-70"
+                    aria-label="Generate audience notes with AI"
+                    title="Generate audience notes with AI"
+                  >
+                    <IconSparkles />
+                  </button>
+                </div>
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-ig-text">Audience summary</span>
                   <textarea

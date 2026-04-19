@@ -53,7 +53,7 @@ export function Sidebar() {
         </NavLink>
         <NavLink to="/reels" className={linkClass}>
           <IconReels />
-          <span>Reels</span>
+          <span>Prolink</span>
         </NavLink>
         <NavLink to="/messages" className={linkClass}>
           <IconMessage />

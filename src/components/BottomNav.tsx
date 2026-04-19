@@ -21,7 +21,7 @@ export function BottomNav() {
       <NavLink to="/create" className={item} aria-label="Create">
         <IconCreate />
       </NavLink>
-      <NavLink to="/reels" className={item}>
+      <NavLink to="/reels" className={item} aria-label="Prolink">
         <IconReels />
       </NavLink>
       <NavLink to={`/profile/${profileUsername}`} className={item}>

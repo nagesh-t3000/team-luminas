@@ -1,8 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { IconSparkles } from "@/components/Icons";
 import { currentUser } from "@/data/mockData";
 import { getAuthUserAvatarUrl, hasCompleteProfileBasics, persistAuthUserWithSettings, type AuthUser } from "@/lib/appAuth";
+import {
+  validateCompanyWebsite,
+  type CompanyWebsiteVerificationResult,
+} from "@/lib/companyWebsiteVerification";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 type SettingsPageProps = {
@@ -49,7 +53,8 @@ const companyDomainOptions = [
 const MAX_PROFILE_PHOTO_DIMENSION = 512;
 const MAX_PROFILE_PHOTO_DATA_URL_LENGTH = 200_000;
 const MAX_SKILLED_DOMAINS = 8;
-const MAX_COMPANY_DOMAINS = 5;
+const MAX_COMPANY_DOMAINS = 1;
+const MAX_COMPANY_WEBSITE_URL_LENGTH = 300;
 
 function parseCommaSeparatedList(
   value: string,
@@ -92,6 +97,32 @@ function normalizeCompanyDomains(domains: string[]) {
       return true;
     })
     .slice(0, MAX_COMPANY_DOMAINS);
+}
+
+function normalizeCompanyWebsiteUrl(value: string) {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return "";
+  }
+
+  const candidateUrl = /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(trimmedValue) ? trimmedValue : `https://${trimmedValue}`;
+
+  try {
+    const parsedUrl = new URL(candidateUrl);
+
+    if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+      throw new Error("Enter a valid company website URL.");
+    }
+
+    return parsedUrl.toString().slice(0, MAX_COMPANY_WEBSITE_URL_LENGTH);
+  } catch {
+    throw new Error("Enter a valid company website URL.");
+  }
+}
+
+function buildCompanyWebsiteValidationKey(websiteUrl: string, companyDomains: string[]) {
+  return websiteUrl ? `${websiteUrl}::${companyDomains.join("|").toLowerCase()}` : "";
 }
 
 function haveMatchingItems(first: string[], second: string[]) {
@@ -215,14 +246,56 @@ export function SettingsPage({ authUser, onSettingsUpdated }: SettingsPageProps)
   const [bio, setBio] = useState(authUser.bio ?? "");
   const [domainInput, setDomainInput] = useState((authUser.skilled_domains ?? []).join(", "));
   const [isProfessionalAccount, setIsProfessionalAccount] = useState(Boolean(authUser.is_professional_account));
-  const [selectedCompanyDomain, setSelectedCompanyDomain] = useState("");
+  const [selectedCompanyDomain, setSelectedCompanyDomain] = useState(authUser.company_domains?.[0] ?? "");
   const [companyDomains, setCompanyDomains] = useState<string[]>(() => normalizeCompanyDomains(authUser.company_domains ?? []));
+  const [companyWebsiteUrl, setCompanyWebsiteUrl] = useState(authUser.company_verification_website_url ?? "");
   const [preferredSuggestions, setPreferredSuggestions] = useState<string[]>(authUser.preferred_suggestions ?? []);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState(getAuthUserAvatarUrl(authUser));
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [websiteValidationState, setWebsiteValidationState] = useState<"idle" | "checking" | "complete" | "error">(
+    "idle",
+  );
+  const [websiteValidationError, setWebsiteValidationError] = useState("");
+  const [websiteValidationResult, setWebsiteValidationResult] = useState<CompanyWebsiteVerificationResult | null>(null);
+  const [lastWebsiteValidationKey, setLastWebsiteValidationKey] = useState("");
+  const websiteValidationRequestIdRef = useRef(0);
 
   const parsedDomains = useMemo(() => parseDomains(domainInput), [domainInput]);
+  const normalizedCompanyDomains = useMemo(() => normalizeCompanyDomains(companyDomains), [companyDomains]);
+  const savedCompanyDomains = useMemo(() => normalizeCompanyDomains(authUser.company_domains ?? []), [authUser.company_domains]);
+  const normalizedCompanyWebsiteUrlForValidation = useMemo(() => {
+    if (!isProfessionalAccount) {
+      return "";
+    }
+
+    try {
+      return normalizeCompanyWebsiteUrl(companyWebsiteUrl);
+    } catch {
+      return "";
+    }
+  }, [companyWebsiteUrl, isProfessionalAccount]);
+  const companyWebsiteUrlInputError = useMemo(() => {
+    if (!isProfessionalAccount || !companyWebsiteUrl.trim()) {
+      return "";
+    }
+
+    try {
+      normalizeCompanyWebsiteUrl(companyWebsiteUrl);
+      return "";
+    } catch (error) {
+      return getErrorMessage(error, "Enter a valid company website URL.");
+    }
+  }, [companyWebsiteUrl, isProfessionalAccount]);
+  const companyWebsiteValidationKey = useMemo(
+    () => buildCompanyWebsiteValidationKey(normalizedCompanyWebsiteUrlForValidation, normalizedCompanyDomains),
+    [normalizedCompanyDomains, normalizedCompanyWebsiteUrlForValidation],
+  );
+  const currentWebsiteValidationResult =
+    companyWebsiteValidationKey && companyWebsiteValidationKey === lastWebsiteValidationKey ? websiteValidationResult : null;
+  const companyVerificationStatus = authUser.company_verification_status ?? "required";
+  const companyVerificationWebsiteUrl = authUser.company_verification_website_url?.trim() ?? "";
+  const companyVerificationNotes = authUser.company_verification_review_notes?.trim() ?? "";
   const profileBasicsChecklist = useMemo(
     () => [
       { id: "name", label: "Name", isComplete: Boolean(fullName.trim()) },
@@ -239,6 +312,13 @@ export function SettingsPage({ authUser, onSettingsUpdated }: SettingsPageProps)
     !haveMatchingItems(parsedDomains, authUser.skilled_domains ?? []);
   const needsProfessionalAccountForVisibility = !isProfessionalAccount;
   const hasUnsavedProfessionalAccountChange = isProfessionalAccount !== Boolean(authUser.is_professional_account);
+  const hasUnsavedCompanyVerificationChange =
+    hasUnsavedProfessionalAccountChange ||
+    !haveMatchingItems(normalizedCompanyDomains, savedCompanyDomains) ||
+    companyWebsiteUrl.trim() !== companyVerificationWebsiteUrl;
+  const shouldAutoValidateCompanyWebsite = Boolean(
+    isProfessionalAccount && normalizedCompanyWebsiteUrlForValidation && !companyWebsiteUrlInputError,
+  );
   const visibilityStatus = authUser.human_verification_status ?? "required";
   const visibilityStatusLabel =
     visibilityStatus === "verified"
@@ -257,6 +337,77 @@ export function SettingsPage({ authUser, onSettingsUpdated }: SettingsPageProps)
           ? "border-red-200 bg-red-50 text-red-700"
           : "border-amber-200 bg-amber-50 text-amber-700";
   const canEnhanceBioWithAi = Boolean(fullName.trim() || profileType.trim() || parsedDomains.length > 0 || bio.trim());
+  const companyVerificationStatusLabel =
+    companyVerificationStatus === "approved"
+      ? "Approved"
+      : companyVerificationStatus === "pending"
+        ? "Pending review"
+        : companyVerificationStatus === "rejected"
+          ? "Needs updates"
+          : "Not submitted";
+  const companyVerificationStatusClasses =
+    companyVerificationStatus === "approved"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : companyVerificationStatus === "pending"
+        ? "border-sky-200 bg-sky-50 text-sky-700"
+        : companyVerificationStatus === "rejected"
+          ? "border-red-200 bg-red-50 text-red-700"
+          : "border-amber-200 bg-amber-50 text-amber-700";
+
+  useEffect(() => {
+    if (!shouldAutoValidateCompanyWebsite) {
+      websiteValidationRequestIdRef.current += 1;
+      setWebsiteValidationState("idle");
+      setWebsiteValidationError("");
+      setWebsiteValidationResult(null);
+      setLastWebsiteValidationKey("");
+      return;
+    }
+
+    if (currentWebsiteValidationResult) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      const requestId = websiteValidationRequestIdRef.current + 1;
+      websiteValidationRequestIdRef.current = requestId;
+      setWebsiteValidationState("checking");
+      setWebsiteValidationError("");
+
+      try {
+        const result = await validateCompanyWebsite({
+          companyDomains: normalizedCompanyDomains,
+          websiteUrl: normalizedCompanyWebsiteUrlForValidation,
+        });
+
+        if (websiteValidationRequestIdRef.current !== requestId) {
+          return;
+        }
+
+        setWebsiteValidationResult(result);
+        setLastWebsiteValidationKey(companyWebsiteValidationKey);
+        setWebsiteValidationState("complete");
+      } catch (error) {
+        if (websiteValidationRequestIdRef.current !== requestId) {
+          return;
+        }
+
+        setWebsiteValidationResult(null);
+        setLastWebsiteValidationKey("");
+        setWebsiteValidationState("error");
+        setWebsiteValidationError(getErrorMessage(error, "Unable to validate the website right now."));
+      }
+    }, 900);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    currentWebsiteValidationResult,
+    normalizedCompanyDomains,
+    normalizedCompanyWebsiteUrlForValidation,
+    shouldAutoValidateCompanyWebsite,
+  ]);
 
   function toggleSuggestionRole(roleId: string) {
     setPreferredSuggestions((current) =>
@@ -267,21 +418,18 @@ export function SettingsPage({ authUser, onSettingsUpdated }: SettingsPageProps)
   function addCompanyDomain(domain: string) {
     const normalizedDomain = domain.trim();
 
-    if (
-      !normalizedDomain ||
-      companyDomains.includes(normalizedDomain) ||
-      companyDomains.length >= MAX_COMPANY_DOMAINS
-    ) {
+    if (!normalizedDomain) {
       return;
     }
 
-    setCompanyDomains((current) => [...current, normalizedDomain]);
-    setSelectedCompanyDomain("");
+    setCompanyDomains([normalizedDomain]);
+    setSelectedCompanyDomain(normalizedDomain);
     setErrorMessage("");
   }
 
   function removeCompanyDomain(domain: string) {
     setCompanyDomains((current) => current.filter((item) => item !== domain));
+    setSelectedCompanyDomain("");
   }
 
   function handleEnhanceBioWithAi() {
@@ -320,8 +468,6 @@ export function SettingsPage({ authUser, onSettingsUpdated }: SettingsPageProps)
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const normalizedCompanyDomains = normalizeCompanyDomains(companyDomains);
-
     if (!fullName.trim()) {
       setErrorMessage("Full name is required.");
       return;
@@ -334,6 +480,15 @@ export function SettingsPage({ authUser, onSettingsUpdated }: SettingsPageProps)
 
     if (isProfessionalAccount && normalizedCompanyDomains.length === 0) {
       setErrorMessage("Add at least one company domain for a professional account.");
+      return;
+    }
+
+    let normalizedCompanyWebsiteUrl = "";
+
+    try {
+      normalizedCompanyWebsiteUrl = isProfessionalAccount ? normalizeCompanyWebsiteUrl(companyWebsiteUrl) : "";
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error, "Enter a valid company website URL."));
       return;
     }
 
@@ -387,6 +542,46 @@ export function SettingsPage({ authUser, onSettingsUpdated }: SettingsPageProps)
 
       if (settingsUpdate.error) {
         throw settingsUpdate.error;
+      }
+
+      if (hasUnsavedCompanyVerificationChange) {
+        const companyVerificationUpdate = await supabase.rpc("sync_company_verification_profile", {
+          user_id_input: authUser.id,
+          is_professional_account_input: isProfessionalAccount,
+          company_domains_input: isProfessionalAccount ? normalizedCompanyDomains : [],
+          company_verification_website_url_input: normalizedCompanyWebsiteUrl || null,
+        });
+
+        if (companyVerificationUpdate.error) {
+          throw companyVerificationUpdate.error;
+        }
+
+        if (isProfessionalAccount && normalizedCompanyDomains.length > 0 && normalizedCompanyWebsiteUrl) {
+          const validationResult =
+            currentWebsiteValidationResult && currentWebsiteValidationResult.checkedUrl === normalizedCompanyWebsiteUrl
+              ? currentWebsiteValidationResult
+              : await validateCompanyWebsite({
+                  companyDomains: normalizedCompanyDomains,
+                  websiteUrl: normalizedCompanyWebsiteUrl,
+                });
+
+          const appliedCompanyVerificationResult = await supabase.rpc("apply_company_website_verification_result", {
+            user_id_input: authUser.id,
+            company_verification_website_url_input: validationResult.checkedUrl,
+            company_verification_status_input: validationResult.status,
+            company_verification_review_notes_input: validationResult.reviewNotes,
+            company_verified_at_input: validationResult.status === "approved" ? validationResult.checkedAt : null,
+          });
+
+          if (appliedCompanyVerificationResult.error) {
+            throw appliedCompanyVerificationResult.error;
+          }
+
+          setWebsiteValidationResult(validationResult);
+          setLastWebsiteValidationKey(companyWebsiteValidationKey);
+          setWebsiteValidationState("complete");
+          setWebsiteValidationError("");
+        }
       }
 
       const profileRecord = Array.isArray(profileUpdate.data) ? profileUpdate.data[0] : profileUpdate.data;
@@ -516,13 +711,21 @@ export function SettingsPage({ authUser, onSettingsUpdated }: SettingsPageProps)
                       type="checkbox"
                       checked={isProfessionalAccount}
                       onChange={(event) => setIsProfessionalAccount(event.target.checked)}
-                      className="peer sr-only"
+                      className="sr-only"
                     />
                     <span className="text-sm font-medium text-ig-text">
                       {isProfessionalAccount ? "Enabled" : "Disabled"}
                     </span>
-                    <span className="relative h-7 w-12 rounded-full bg-ig-border transition peer-checked:bg-ig-link">
-                      <span className="absolute left-1 top-1 h-5 w-5 rounded-full bg-white transition peer-checked:translate-x-5" />
+                    <span
+                      className={`relative h-7 w-12 rounded-full transition ${
+                        isProfessionalAccount ? "bg-ig-link" : "bg-ig-border"
+                      }`}
+                    >
+                      <span
+                        className={`absolute left-1 top-1 h-5 w-5 rounded-full bg-white transition ${
+                          isProfessionalAccount ? "translate-x-5" : ""
+                        }`}
+                      />
                     </span>
                   </label>
                 </div>
@@ -530,7 +733,7 @@ export function SettingsPage({ authUser, onSettingsUpdated }: SettingsPageProps)
                 {isProfessionalAccount ? (
                   <div className="mt-4 space-y-3">
                     <label className="block">
-                      <span className="mb-2 block text-sm font-medium text-ig-text">Company domains</span>
+                      <span className="mb-2 block text-sm font-medium text-ig-text">Company domain</span>
                       <select
                         value={selectedCompanyDomain}
                         onChange={(event) => {
@@ -545,15 +748,77 @@ export function SettingsPage({ authUser, onSettingsUpdated }: SettingsPageProps)
                       >
                         <option value="">Select a company domain</option>
                         {companyDomainOptions.map((option) => (
-                          <option key={option} value={option} disabled={companyDomains.includes(option)}>
+                          <option key={option} value={option}>
                             {option}
                           </option>
                         ))}
                       </select>
                     </label>
                     <p className="text-xs text-ig-muted">
-                      Choose up to 5 company domains for your professional account.
+                      Choose 1 company domain for your professional account.
                     </p>
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-medium text-ig-text">Company website</span>
+                      <input
+                        type="url"
+                        value={companyWebsiteUrl}
+                        onChange={(event) => setCompanyWebsiteUrl(event.target.value)}
+                        placeholder="https://example.com"
+                        className="w-full rounded-2xl border border-ig-border bg-ig-bg px-4 py-3 text-sm text-ig-text outline-none transition focus:border-ig-link focus:ring-2 focus:ring-[#0095f633]"
+                      />
+                      <p className="mt-2 text-xs text-ig-muted">
+                        Luminas checks this website within seconds using AI. It looks for a real company presence,
+                        relevant business details, and enough public information to support profile verification.
+                      </p>
+                    </label>
+                    <div className="rounded-2xl border border-ig-border bg-white px-4 py-3">
+                      {!companyWebsiteUrl.trim() ? (
+                        <p className="text-sm text-ig-muted">
+                          Add a valid public website URL to start the automated company check.
+                        </p>
+                      ) : companyWebsiteUrlInputError ? (
+                        <p className="text-sm text-red-700">{companyWebsiteUrlInputError}</p>
+                      ) : websiteValidationState === "checking" ? (
+                        <p className="text-sm text-sky-700">
+                          Checking the website now. This usually takes a few seconds.
+                        </p>
+                      ) : websiteValidationState === "error" ? (
+                        <p className="text-sm text-red-700">{websiteValidationError}</p>
+                      ) : currentWebsiteValidationResult ? (
+                        <div className="space-y-3">
+                          <div className="flex flex-wrap items-center gap-3">
+                            <span
+                              className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${
+                                currentWebsiteValidationResult.status === "approved"
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                  : currentWebsiteValidationResult.status === "rejected"
+                                    ? "border-red-200 bg-red-50 text-red-700"
+                                    : "border-sky-200 bg-sky-50 text-sky-700"
+                              }`}
+                            >
+                              {currentWebsiteValidationResult.status === "approved"
+                                ? "AI approved"
+                                : currentWebsiteValidationResult.status === "rejected"
+                                  ? "AI rejected"
+                                  : "AI pending"}
+                            </span>
+                            <p className="text-xs uppercase tracking-[0.18em] text-ig-muted">
+                              Confidence: {currentWebsiteValidationResult.confidence}
+                            </p>
+                          </div>
+                          <p className="text-sm leading-6 text-ig-text">{currentWebsiteValidationResult.reviewNotes}</p>
+                          {currentWebsiteValidationResult.reasons.length > 0 ? (
+                            <p className="text-xs leading-5 text-ig-muted">
+                              Signals found: {currentWebsiteValidationResult.reasons.join(" | ")}
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-ig-muted">
+                          The website is ready to be checked.
+                        </p>
+                      )}
+                    </div>
                     {companyDomains.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
                         {companyDomains.map((domain) => (
@@ -568,9 +833,51 @@ export function SettingsPage({ authUser, onSettingsUpdated }: SettingsPageProps)
                         ))}
                       </div>
                     ) : null}
-                    {companyDomains.length >= MAX_COMPANY_DOMAINS ? (
-                      <p className="text-xs text-ig-muted">Maximum of {MAX_COMPANY_DOMAINS} company domains selected.</p>
-                    ) : null}
+                    <div className="rounded-2xl border border-ig-border bg-ig-bg p-4">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span
+                          className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${companyVerificationStatusClasses}`}
+                        >
+                          {companyVerificationStatusLabel}
+                        </span>
+                        <p className="text-sm text-ig-muted">Company approval is only required for ads and promotions.</p>
+                      </div>
+                      {!normalizedCompanyDomains.length ? (
+                        <p className="mt-3 text-sm leading-6 text-ig-muted">
+                          Add at least one company domain before using company verification for ads and promotions.
+                        </p>
+                      ) : !companyWebsiteUrl.trim() ? (
+                        <p className="mt-3 text-sm leading-6 text-ig-muted">
+                          Add your company website to start the automated verification check immediately.
+                        </p>
+                      ) : hasUnsavedCompanyVerificationChange ? (
+                        <p className="mt-3 text-sm leading-6 text-ig-muted">
+                          Save settings after the website check finishes to store the latest verification result.
+                        </p>
+                      ) : companyVerificationStatus === "approved" ? (
+                        <p className="mt-3 text-sm leading-6 text-emerald-800">
+                          Your company has been approved for ads and promotions.
+                        </p>
+                      ) : companyVerificationStatus === "pending" ? (
+                        <p className="mt-3 text-sm leading-6 text-sky-800">
+                          Your website needs follow-up review. Ads and promotions unlock after approval.
+                        </p>
+                      ) : companyVerificationStatus === "rejected" ? (
+                        <p className="mt-3 text-sm leading-6 text-red-800">
+                          Update your company website or domains, then save again to re-run verification.
+                        </p>
+                      ) : (
+                        <p className="mt-3 text-sm leading-6 text-amber-800">
+                          Company verification has not started yet. Save a website URL to verify it.
+                        </p>
+                      )}
+                      {companyVerificationNotes ? (
+                        <div className="mt-3 rounded-2xl border border-ig-border bg-white px-4 py-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ig-muted">Verification notes</p>
+                          <p className="mt-2 text-sm leading-6 text-ig-text">{companyVerificationNotes}</p>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 ) : null}
               </section>

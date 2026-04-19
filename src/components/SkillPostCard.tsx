@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { IconComment, IconHeart } from "@/components/Icons";
+import { IconBookmark, IconComment, IconHeart } from "@/components/Icons";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { getStoredAuthUser } from "@/lib/appAuth";
 import { buildFallbackAvatar } from "@/lib/publicUsers";
+import { isSkillPostSaved, subscribeToSavedProfileItems, toggleSavedSkillPost } from "@/lib/savedItems";
 import {
   createSkillPostComment,
   formatRelativePostTime,
@@ -32,6 +33,7 @@ export function SkillPostCard({ post }: { post: SkillPost }) {
   const [commentDraft, setCommentDraft] = useState("");
   const [actionError, setActionError] = useState("");
   const [commentError, setCommentError] = useState("");
+  const [isSaved, setIsSaved] = useState(() => isSkillPostSaved(post.id));
 
   useEffect(() => {
     setLikeCount(post.like_count);
@@ -45,7 +47,16 @@ export function SkillPostCard({ post }: { post: SkillPost }) {
     setCommentDraft("");
     setActionError("");
     setCommentError("");
+    setIsSaved(isSkillPostSaved(post.id));
   }, [post.comment_count, post.id, post.like_count, post.viewer_has_liked]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToSavedProfileItems(() => {
+      setIsSaved(isSkillPostSaved(post.id));
+    });
+
+    return unsubscribe;
+  }, [post.id]);
 
   async function loadComments() {
     setIsCommentsLoading(true);
@@ -137,6 +148,10 @@ export function SkillPostCard({ post }: { post: SkillPost }) {
     }
   }
 
+  function handleSaveToggle() {
+    setIsSaved(toggleSavedSkillPost(post));
+  }
+
   return (
     <article className="rounded-3xl border border-ig-border bg-ig-surface p-5 shadow-sm">
       <header className="flex items-start gap-3">
@@ -193,28 +208,39 @@ export function SkillPostCard({ post }: { post: SkillPost }) {
         ) : null}
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-5 text-sm text-ig-text">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-ig-text">
+        <div className="flex flex-wrap items-center gap-5">
+          <button
+            type="button"
+            className={`inline-flex items-center gap-2 transition ${hasLiked ? "text-[#ed4956]" : "hover:text-ig-muted"}`}
+            onClick={handleLikeToggle}
+            disabled={isLikePending}
+            aria-label={hasLiked ? "Unlike post" : "Like post"}
+          >
+            <IconHeart filled={hasLiked} />
+            <span className="font-medium">{formatInteractionCount(likeCount, "like")}</span>
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 transition hover:text-ig-muted"
+            onClick={() => {
+              void handleCommentToggle();
+            }}
+            aria-expanded={isCommentsOpen}
+            aria-label={isCommentsOpen ? "Hide comments" : "Show comments"}
+          >
+            <IconComment />
+            <span className="font-medium">{formatInteractionCount(commentCount, "comment")}</span>
+          </button>
+        </div>
         <button
           type="button"
-          className={`inline-flex items-center gap-2 transition ${hasLiked ? "text-[#ed4956]" : "hover:text-ig-muted"}`}
-          onClick={handleLikeToggle}
-          disabled={isLikePending}
-          aria-label={hasLiked ? "Unlike post" : "Like post"}
+          className={`inline-flex items-center gap-2 transition ${isSaved ? "text-ig-text" : "text-ig-muted hover:text-ig-text"}`}
+          onClick={handleSaveToggle}
+          aria-label={isSaved ? "Unsave post" : "Save post"}
         >
-          <IconHeart filled={hasLiked} />
-          <span className="font-medium">{formatInteractionCount(likeCount, "like")}</span>
-        </button>
-        <button
-          type="button"
-          className="inline-flex items-center gap-2 transition hover:text-ig-muted"
-          onClick={() => {
-            void handleCommentToggle();
-          }}
-          aria-expanded={isCommentsOpen}
-          aria-label={isCommentsOpen ? "Hide comments" : "Show comments"}
-        >
-          <IconComment />
-          <span className="font-medium">{formatInteractionCount(commentCount, "comment")}</span>
+          <IconBookmark filled={isSaved} />
+          <span className="font-medium">{isSaved ? "Saved" : "Save"}</span>
         </button>
       </div>
 

@@ -8,7 +8,7 @@ alter table if exists public.user_settings
 
 alter table if exists public.user_settings
   add constraint user_settings_company_domains_limit_check
-    check (coalesce(array_length(company_domains, 1), 0) <= 5),
+    check (coalesce(array_length(company_domains, 1), 0) <= 1),
   add constraint user_settings_company_domains_requires_professional_account_check
     check (is_professional_account or coalesce(array_length(company_domains, 1), 0) = 0);
 
@@ -122,7 +122,7 @@ begin
             where trim(coalesce(value, '')) <> ''
             group by left(trim(value), 60)
             order by min(ord)
-            limit 5
+            limit 1
           ) normalized
           order by first_position
         ),

@@ -1,7 +1,10 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { IconBookmark } from "@/components/Icons";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { buildFallbackAvatar } from "@/lib/publicUsers";
 import { type ExploreUpdate } from "@/lib/exploreUpdates";
+import { isEventSaved, subscribeToSavedProfileItems, toggleSavedEvent } from "@/lib/savedItems";
 import { formatRelativePostTime } from "@/lib/skillPosts";
 
 function getCallToAction(update: ExploreUpdate) {
@@ -24,6 +27,7 @@ function formatEventDate(value: string) {
 }
 
 export function EventFeedCard({ update }: { update: ExploreUpdate }) {
+  const [isSaved, setIsSaved] = useState(() => isEventSaved(update.id));
   const authorUsername = update.author_username?.trim() || null;
   const authorDisplayName = update.author_full_name?.trim() || update.source_name || authorUsername || "Luminas member";
   const roleText = update.author_professional_role?.trim() || "Luminas member";
@@ -31,6 +35,22 @@ export function EventFeedCard({ update }: { update: ExploreUpdate }) {
   const eventDate = formatEventDate(update.published_at);
   const relativeTime = formatRelativePostTime(update.published_at);
   const callToAction = getCallToAction(update);
+
+  useEffect(() => {
+    setIsSaved(isEventSaved(update.id));
+  }, [update.id]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToSavedProfileItems(() => {
+      setIsSaved(isEventSaved(update.id));
+    });
+
+    return unsubscribe;
+  }, [update.id]);
+
+  function handleSaveToggle() {
+    setIsSaved(toggleSavedEvent(update));
+  }
 
   return (
     <article className="overflow-hidden rounded-3xl border border-ig-border bg-ig-surface shadow-sm">
@@ -97,16 +117,31 @@ export function EventFeedCard({ update }: { update: ExploreUpdate }) {
 
         <footer className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <span className="text-[12px] font-medium uppercase tracking-wide text-ig-muted">Starts {relativeTime}</span>
-          {update.external_url ? (
-            <a
-              href={update.external_url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center rounded-full bg-ig-link px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSaveToggle}
+              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                isSaved
+                  ? "border-ig-text bg-ig-text text-white"
+                  : "border-ig-border bg-white text-ig-text hover:bg-ig-bg"
+              }`}
+              aria-label={isSaved ? "Unsave event" : "Save event"}
             >
-              {callToAction}
-            </a>
-          ) : null}
+              <IconBookmark filled={isSaved} />
+              {isSaved ? "Saved" : "Save"}
+            </button>
+            {update.external_url ? (
+              <a
+                href={update.external_url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center rounded-full bg-ig-link px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+              >
+                {callToAction}
+              </a>
+            ) : null}
+          </div>
         </footer>
       </div>
     </article>

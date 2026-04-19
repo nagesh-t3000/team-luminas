@@ -16,6 +16,10 @@ export type AuthUser = {
   human_verification_provider?: string | null;
   human_verified_at?: string | null;
   human_verification_failure_reason?: string | null;
+  company_verification_status?: "required" | "pending" | "approved" | "rejected" | null;
+  company_verification_website_url?: string | null;
+  company_verification_review_notes?: string | null;
+  company_verified_at?: string | null;
   created_at: string;
   was_created?: boolean;
 };
@@ -29,6 +33,10 @@ type UserSettingsRecord = {
   is_professional_account: boolean | null;
   company_domains: string[] | null;
   preferred_suggestions: string[] | null;
+  company_verification_status: "required" | "pending" | "approved" | "rejected" | null;
+  company_verification_website_url: string | null;
+  company_verification_review_notes: string | null;
+  company_verified_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -42,13 +50,25 @@ function normalizeDomainList(domains: string[] | null | undefined, maxItems: num
     : [];
 }
 
+function normalizeCompanyVerificationStatus(
+  status: AuthUser["company_verification_status"],
+): NonNullable<AuthUser["company_verification_status"]> {
+  return status === "pending" || status === "approved" || status === "rejected" ? status : "required";
+}
+
 function normalizeAuthUser(user: AuthUser) {
   return {
     ...user,
     profile_photo_url: typeof user.profile_photo_url === "string" ? user.profile_photo_url : null,
     skilled_domains: normalizeDomainList(user.skilled_domains, 8),
     is_professional_account: Boolean(user.is_professional_account),
-    company_domains: normalizeDomainList(user.company_domains, 5),
+    company_domains: normalizeDomainList(user.company_domains, 1),
+    company_verification_status: normalizeCompanyVerificationStatus(user.company_verification_status),
+    company_verification_website_url:
+      typeof user.company_verification_website_url === "string" ? user.company_verification_website_url.trim() || null : null,
+    company_verification_review_notes:
+      typeof user.company_verification_review_notes === "string" ? user.company_verification_review_notes.trim() || null : null,
+    company_verified_at: typeof user.company_verified_at === "string" ? user.company_verified_at : null,
     preferred_suggestions: Array.isArray(user.preferred_suggestions)
       ? user.preferred_suggestions
           .map((role) => (typeof role === "string" ? role.trim() : ""))
@@ -69,6 +89,10 @@ function mergeAuthUserWithSettings(user: AuthUser, settings?: UserSettingsRecord
     is_professional_account: settings.is_professional_account,
     company_domains: settings.company_domains,
     preferred_suggestions: settings.preferred_suggestions,
+    company_verification_status: settings.company_verification_status,
+    company_verification_website_url: settings.company_verification_website_url,
+    company_verification_review_notes: settings.company_verification_review_notes,
+    company_verified_at: settings.company_verified_at,
   });
 }
 
@@ -124,6 +148,27 @@ export function isVerifiedProfile(
     | undefined,
 ) {
   return Boolean(user?.is_professional_account && user.human_verification_status === "verified");
+}
+
+export function isProfessionalAccount(user: Pick<AuthUser, "is_professional_account"> | null | undefined) {
+  return Boolean(user?.is_professional_account);
+}
+
+export function canCreateAds(
+  user:
+    | Pick<
+        AuthUser,
+        "is_professional_account" | "company_domains" | "human_verification_status" | "company_verification_status"
+      >
+    | null
+    | undefined,
+) {
+  return Boolean(
+    user?.is_professional_account &&
+      normalizeDomainList(user.company_domains, 1).length > 0 &&
+      user.human_verification_status === "verified" &&
+      user.company_verification_status === "approved",
+  );
 }
 
 export function hasCompleteProfileBasics(

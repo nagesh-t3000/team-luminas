@@ -7,6 +7,7 @@ import {
 } from "@/lib/exploreUpdates";
 import { formatRelativePostTime } from "@/lib/skillPosts";
 import { listUserEvents } from "@/lib/userEvents";
+import { listUserJobs } from "@/lib/userJobs";
 
 const categoryTabs: Array<{ label: string; value: ExploreUpdateCategory | "all" }> = [
   { label: "All", value: "all" },
@@ -131,7 +132,31 @@ export function ExplorePage() {
             return searchableText.includes(normalizedSearch);
           });
 
-          const nextUpdates = [...createdEvents, ...remoteUpdates].sort((left, right) => {
+          const createdJobs = listUserJobs().filter((job) => {
+            const matchesCategory = selectedCategory === "all" || job.category === selectedCategory;
+
+            if (!matchesCategory) {
+              return false;
+            }
+
+            if (!normalizedSearch) {
+              return true;
+            }
+
+            const searchableText = [
+              job.title,
+              job.summary,
+              job.source_name,
+              job.location,
+              ...job.tags,
+            ]
+              .join(" ")
+              .toLowerCase();
+
+            return searchableText.includes(normalizedSearch);
+          });
+
+          const nextUpdates = [...createdJobs, ...createdEvents, ...remoteUpdates].sort((left, right) => {
             const leftTime = new Date(left.published_at).getTime();
             const rightTime = new Date(right.published_at).getTime();
             return rightTime - leftTime;

@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { EventFeedCard } from "@/components/EventFeedCard";
 import { IconSettings } from "@/components/Icons";
 import { SkillPostCard } from "@/components/SkillPostCard";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { currentUser, posts, roleLabel, users } from "@/data/mockData";
 import { listUserExperiencesByUsername, type UserExperience } from "@/lib/experiences";
+import { listAuthoredExploreUpdates, type ExploreUpdate } from "@/lib/exploreUpdates";
 import { getAuthUserAvatarUrl, getStoredAuthUser } from "@/lib/appAuth";
 import { getConnectionCount, listConnectedUsernames, subscribeToConnections, toggleConnection } from "@/lib/connections";
 import { getPublicUserByUsername, type PublicUser } from "@/lib/publicUsers";
+import { listSavedProfileItems, subscribeToSavedProfileItems, type SavedProfileItem } from "@/lib/savedItems";
 import { listSkillPostsByUsername, type SkillPost } from "@/lib/skillPosts";
+import { listUserEvents } from "@/lib/userEvents";
 
 type ProfileTab = "posts" | "experience" | "saved";
 
@@ -120,12 +124,15 @@ export function ProfilePage() {
   const [activeTab, setActiveTab] = useState<ProfileTab>("posts");
   const [skillPosts, setSkillPosts] = useState<SkillPost[]>([]);
   const [skillPostsError, setSkillPostsError] = useState("");
+  const [authoredEvents, setAuthoredEvents] = useState<ExploreUpdate[]>([]);
+  const [authoredEventsError, setAuthoredEventsError] = useState("");
   const [userExperiences, setUserExperiences] = useState<UserExperience[]>([]);
   const [userExperiencesError, setUserExperiencesError] = useState("");
   const [publicProfile, setPublicProfile] = useState<PublicUser | null>(null);
   const [connectedUsernames, setConnectedUsernames] = useState<string[]>([]);
   const [connectionCount, setConnectionCount] = useState(0);
   const [isConnectionPending, setIsConnectionPending] = useState(false);
+  const [savedItems, setSavedItems] = useState<SavedProfileItem[]>(() => listSavedProfileItems());
   const isOwnProfile = username === viewerUsername;
   const matchedMockUser = useMemo(() => users.find((candidate) => candidate.username === username) ?? null, [username]);
   const fallbackUser = useMemo(
@@ -167,14 +174,6 @@ export function ProfilePage() {
   }, [authUser, fallbackUser, isOwnProfile, publicProfile]);
   const userPosts = posts.filter((p) => p.userId === user.id);
   const displayGrid = userPosts.map((p) => ({ id: p.id, src: p.imageUrl }));
-  const savedGrid = useMemo(
-    () =>
-      posts
-        .filter((p) => p.userId !== user.id)
-        .slice(0, 6)
-        .map((p) => ({ id: p.id, src: p.imageUrl })),
-    [user.id],
-  );
   const seededExperienceEntries = matchedMockUser ? experienceByRole[matchedMockUser.role] : [];
   const displayRole =
     isOwnProfile && authUser?.professional_role?.trim()
@@ -288,6 +287,46 @@ export function ProfilePage() {
       isCancelled = true;
     };
   }, [user.username]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadAuthoredEvents() {
+      try {
+        const nextEvents = isOwnProfile
+          ? listUserEvents()
+          : publicProfile?.id
+            ? await listAuthoredExploreUpdates(publicProfile.id, "event", 20)
+            : [];
+
+        if (!isCancelled) {
+          setAuthoredEvents(nextEvents);
+          setAuthoredEventsError("");
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          setAuthoredEvents([]);
+          setAuthoredEventsError(error instanceof Error ? error.message : "Unable to load events right now.");
+        }
+      }
+    }
+
+    void loadAuthoredEvents();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOwnProfile, publicProfile?.id]);
+
+  useEffect(() => {
+    setSavedItems(listSavedProfileItems());
+
+    const unsubscribe = subscribeToSavedProfileItems(() => {
+      setSavedItems(listSavedProfileItems());
+    });
+
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     let isCancelled = false;
@@ -437,10 +476,15 @@ export function ProfilePage() {
         })}
       </div>
       {activeTab === "posts" ? (
-        totalPostCount > 0 || Boolean(skillPostsError) ? (
+        totalPostCount > 0 || authoredEvents.length > 0 || Boolean(skillPostsError) || Boolean(authoredEventsError) ? (
           <div className="px-4 py-4 md:px-6">
             {skillPostsError ? (
               <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{skillPostsError}</div>
+            ) : null}
+            {authoredEventsError ? (
+              <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {authoredEventsError}
+              </div>
             ) : null}
             {skillPosts.length > 0 ? (
               <div className="space-y-4">
@@ -449,8 +493,15 @@ export function ProfilePage() {
                 ))}
               </div>
             ) : null}
+            {authoredEvents.length > 0 ? (
+              <div className={`space-y-4 ${skillPosts.length > 0 ? "mt-4" : ""}`}>
+                {authoredEvents.map((event) => (
+                  <EventFeedCard key={event.id} update={event} />
+                ))}
+              </div>
+            ) : null}
             {displayGrid.length > 0 ? (
-              <div className={`grid grid-cols-3 gap-[2px] md:gap-1 ${skillPosts.length > 0 ? "mt-4" : ""}`}>
+              <div className={`grid grid-cols-3 gap-[2px] md:gap-1 ${skillPosts.length > 0 || authoredEvents.length > 0 ? "mt-4" : ""}`}>
                 {displayGrid.map((g) => (
                   <Link
                     key={g.id}
@@ -519,14 +570,24 @@ export function ProfilePage() {
       ) : null}
       {activeTab === "saved" ? (
         isOwnProfile ? (
-          <div className="grid grid-cols-3 gap-[2px] md:gap-1">
-            {savedGrid.map((g) => (
-              <Link key={g.id} to="#" className="relative aspect-square overflow-hidden bg-black/5" onClick={(e) => e.preventDefault()}>
-                <img src={g.src} alt="" className="h-full w-full object-cover" width={400} height={400} loading="lazy" />
-                <div className="absolute right-2 top-2 rounded-full bg-black/50 px-2 py-1 text-[11px] font-semibold text-white">Saved</div>
-              </Link>
-            ))}
-          </div>
+          savedItems.length > 0 ? (
+            <div className="space-y-4 px-4 py-4 md:px-6">
+              {savedItems.map((item) =>
+                item.kind === "skill_post" ? (
+                  <SkillPostCard key={`skill-post-${item.post.id}`} post={item.post} />
+                ) : (
+                  <EventFeedCard key={`event-${item.event.id}`} update={item.event} />
+                ),
+              )}
+            </div>
+          ) : (
+            <div className="px-4 py-10 text-center md:px-6">
+              <h2 className="text-[16px] font-semibold">Nothing saved yet</h2>
+              <p className="mt-2 text-[14px] text-ig-muted">
+                Save posts and events to come back to them from your profile.
+              </p>
+            </div>
+          )
         ) : (
           <div className="px-4 py-10 text-center md:px-6">
             <h2 className="text-[16px] font-semibold">Saved posts are private</h2>

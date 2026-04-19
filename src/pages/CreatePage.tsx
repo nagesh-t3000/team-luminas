@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { isVerifiedProfile, type AuthUser } from "@/lib/appAuth";
+import { canCreateAds, isProfessionalAccount, isVerifiedProfile, type AuthUser } from "@/lib/appAuth";
 
 type CreatePageProps = {
   authUser: AuthUser;
@@ -7,12 +7,20 @@ type CreatePageProps = {
 
 const createOptions = [
   {
+    title: "Job",
+    description:
+      "Post an experienced-professionals opportunity with a profile role type, experience range, and hiring context for Prolink.",
+    href: "/create/job",
+    cta: "Post job",
+    access: "professional",
+  },
+  {
     title: "Event",
     description:
       "Create a meetup, workshop, demo day, or other community event so people can discover it in Explore.",
     href: "/create/event",
     cta: "Create event",
-    requiresVerifiedProfile: true,
+    access: "verified",
   },
   {
     title: "Skill post",
@@ -20,7 +28,7 @@ const createOptions = [
       "Share a short post with text, images, or videos so your expertise can appear in the home feed and on your profile.",
     href: "/create/post",
     cta: "Create skill post",
-    requiresVerifiedProfile: false,
+    access: "none",
   },
   {
     title: "Experience",
@@ -28,7 +36,7 @@ const createOptions = [
       "Add a role, company, time period, and summary so your profile experience tab reflects your real background.",
     href: "/create/experience",
     cta: "Add experience",
-    requiresVerifiedProfile: false,
+    access: "none",
   },
   {
     title: "Ad campaign",
@@ -36,12 +44,14 @@ const createOptions = [
       "Boost one of your existing events or skill posts with a budget, duration, and audience plan so more members discover it.",
     href: "/create/ad",
     cta: "Create ad",
-    requiresVerifiedProfile: true,
+    access: "company_approved",
   },
 ] as const;
 
 export function CreatePage({ authUser }: CreatePageProps) {
   const canCreateEvents = isVerifiedProfile(authUser);
+  const canPostJobs = isProfessionalAccount(authUser);
+  const canRunAds = canCreateAds(authUser);
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 md:px-6 md:py-10">
@@ -53,7 +63,7 @@ export function CreatePage({ authUser }: CreatePageProps) {
             </span>
             <h1 className="mt-4 text-3xl font-bold tracking-tight text-ig-text">Choose what you want to add</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-ig-muted">
-              Use this space to create an event, publish a skill post, or add a profile experience entry.
+              Use this space to post a job, create an event, publish a skill post, or add a profile experience entry.
             </p>
           </div>
           <Link
@@ -66,11 +76,20 @@ export function CreatePage({ authUser }: CreatePageProps) {
 
         <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           {createOptions.map((option) => {
-            const isDisabled = option.requiresVerifiedProfile && !canCreateEvents;
+            const isDisabled =
+              option.access === "company_approved"
+                ? !canRunAds
+                : option.access === "verified"
+                ? !canCreateEvents
+                : option.access === "professional"
+                  ? !canPostJobs
+                  : false;
             const disabledMessage =
               option.href === "/create/ad"
-                ? "Only verified profiles can create ads."
-                : "Only verified profiles can create events.";
+                ? "Only company-approved professional accounts can create ads."
+                : option.href === "/create/event"
+                  ? "Only verified profiles can create events."
+                  : "Only professional accounts can post jobs.";
 
             return (
             <section

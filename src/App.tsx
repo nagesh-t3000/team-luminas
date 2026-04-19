@@ -11,6 +11,7 @@ import {
 import { ExplorePage } from "@/pages/ExplorePage";
 import { CreateEventPage } from "@/pages/CreateEventPage";
 import { CreateExperiencePage } from "@/pages/CreateExperiencePage";
+import { CreateJobPage } from "@/pages/CreateJobPage";
 import { CreateAdPage } from "@/pages/CreateAdPage";
 import { CreatePage } from "@/pages/CreatePage";
 import { CreateSkillPostPage } from "@/pages/CreateSkillPostPage";
@@ -118,11 +119,12 @@ export default function App() {
           <Route path="create" element={<CreatePage authUser={authUser!} />} />
           <Route path="create/ad" element={<CreateAdPage authUser={authUser!} />} />
           <Route path="create/event" element={<CreateEventPage authUser={authUser!} />} />
+          <Route path="create/job" element={<CreateJobPage authUser={authUser!} />} />
           <Route path="create/post" element={<CreateSkillPostPage authUser={authUser!} />} />
           <Route path="create/experience" element={<CreateExperiencePage authUser={authUser!} />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="explore" element={<ExplorePage />} />
-          <Route path="reels" element={<ReelsPage />} />
+          <Route path="reels" element={<ReelsPage authUser={authUser!} />} />
           <Route path="messages" element={<MessagesPage />} />
           <Route path="profile/:username" element={<ProfilePage />} />
           <Route

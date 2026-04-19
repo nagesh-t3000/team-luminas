@@ -49,7 +49,8 @@ function formatStatusLabel(value: AdCampaign["status"]) {
 }
 
 export function DashboardPage() {
-  const authUser = getStoredAuthUser();
+  const authUser = useMemo(() => getStoredAuthUser(), []);
+  const authUserId = authUser?.id ?? null;
   const firstName = authUser?.full_name?.trim().split(/\s+/)[0] || currentUser.fullName.split(/\s+/)[0];
   const profileUsername = authUser?.username || currentUser.username;
   const [campaigns, setCampaigns] = useState<AdCampaign[]>([]);
@@ -90,7 +91,7 @@ export function DashboardPage() {
     return () => {
       isCancelled = true;
     };
-  }, [authUser]);
+  }, [authUserId]);
 
   const metricCards = useMemo(
     () => [
@@ -180,8 +181,12 @@ export function DashboardPage() {
             ) : null}
 
             {isLoadingAds ? (
-              <div className="mt-4 rounded-2xl border border-ig-border bg-ig-bg px-4 py-3 text-sm text-ig-muted">
-                Loading your ad campaigns...
+              <div className="mt-4 flex items-center justify-center gap-3 rounded-2xl border border-ig-border bg-ig-bg px-4 py-6 text-sm text-ig-muted">
+                <span
+                  className="h-5 w-5 animate-spin rounded-full border-2 border-ig-border border-t-ig-link"
+                  aria-hidden="true"
+                />
+                <span>Loading your ad campaigns...</span>
               </div>
             ) : campaigns.length === 0 ? (
               <div className="mt-4 rounded-3xl border border-dashed border-ig-border bg-ig-bg p-5">

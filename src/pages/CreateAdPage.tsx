@@ -4,7 +4,7 @@ import { IconSparkles } from "@/components/Icons";
 import { createAdCampaign, type AdCampaignStatus, type AdCampaignTargetType } from "@/lib/adCampaigns";
 import { generateAdAudience } from "@/lib/adCampaignAi";
 import { canCreateAds as canCreateAdsForUser, type AuthUser } from "@/lib/appAuth";
-import { listAuthoredExploreUpdates } from "@/lib/exploreUpdates";
+import { listAuthoredExploreUpdates, type ExploreUpdate } from "@/lib/exploreUpdates";
 import { listSkillPostsByUsername } from "@/lib/skillPosts";
 import { listUserEvents } from "@/lib/userEvents";
 
@@ -80,6 +80,36 @@ function parseAudienceLabels(value: string) {
     .slice(0, 8);
 }
 
+function sortNewestFirst<T extends { published_at: string }>(items: T[]) {
+  return [...items].sort((left, right) => {
+    const leftTime = new Date(left.published_at).getTime();
+    const rightTime = new Date(right.published_at).getTime();
+    return rightTime - leftTime;
+  });
+}
+
+function dedupeById<T extends { id: string }>(items: T[]) {
+  const seenIds = new Set<string>();
+
+  return items.filter((item) => {
+    if (seenIds.has(item.id)) {
+      return false;
+    }
+
+    seenIds.add(item.id);
+    return true;
+  });
+}
+
+function mapEventToBoostTarget(event: ExploreUpdate): BoostTarget {
+  return {
+    id: event.id,
+    title: event.title,
+    subtitle: event.location || "Remote",
+    description: event.summary,
+  };
+}
+
 export function CreateAdPage({ authUser }: CreateAdPageProps) {
   const navigate = useNavigate();
   const canCreateAds = canCreateAdsForUser(authUser);
@@ -109,40 +139,18 @@ export function CreateAdPage({ authUser }: CreateAdPageProps) {
 
     setIsLoadingTargets(true);
 
-    Promise.all([
-      listAuthoredExploreUpdates(authUser.id, "event", 20),
-      Promise.resolve(listUserEvents()),
-      listSkillPostsByUsername(authUser.username, 20),
-    ])
-      .then(([authoredEvents, createdEvents, skillPosts]) => {
+    Promise.allSettled([listAuthoredExploreUpdates(authUser.id, "event", 20), listSkillPostsByUsername(authUser.username, 20)])
+      .then(([authoredEventsResult, skillPostsResult]) => {
         if (isCancelled) {
           return;
         }
 
-        const nextEventTargets = Array.from(
-          [...createdEvents, ...authoredEvents].reduce((eventMap, event) => {
-            if (!eventMap.has(event.id)) {
-              eventMap.set(event.id, event);
-            }
+        const authoredEvents = authoredEventsResult.status === "fulfilled" ? authoredEventsResult.value : [];
+        const localEvents = listUserEvents();
+        const skillPosts = skillPostsResult.status === "fulfilled" ? skillPostsResult.value : [];
+        const nextEventTargets = sortNewestFirst(dedupeById([...authoredEvents, ...localEvents]));
 
-            return eventMap;
-          }, new Map<string, (typeof createdEvents)[number] | (typeof authoredEvents)[number]>()),
-        )
-          .map(([, event]) => event)
-          .sort((left, right) => {
-            const leftTime = new Date(left.published_at).getTime();
-            const rightTime = new Date(right.published_at).getTime();
-            return rightTime - leftTime;
-          });
-
-        setEventTargets(
-          nextEventTargets.map((event) => ({
-            id: event.id,
-            title: event.title,
-            subtitle: event.location || "Remote",
-            description: event.summary,
-          })),
-        );
+        setEventTargets(nextEventTargets.map(mapEventToBoostTarget));
         setSkillPostTargets(
           skillPosts.map((post) => ({
             id: post.id,
@@ -151,6 +159,16 @@ export function CreateAdPage({ authUser }: CreateAdPageProps) {
             description: post.content || "Media-led skill post",
           })),
         );
+        if (authoredEventsResult.status === "rejected") {
+          setErrorMessage(getErrorMessage(authoredEventsResult.reason));
+          return;
+        }
+
+        if (skillPostsResult.status === "rejected") {
+          setErrorMessage(getErrorMessage(skillPostsResult.reason));
+          return;
+        }
+
         setErrorMessage("");
       })
       .catch((error) => {
@@ -222,7 +240,7 @@ export function CreateAdPage({ authUser }: CreateAdPageProps) {
       return;
     }
 
-    if (!selectedTargetId) {
+    if (!selectedTarget) {
       setErrorMessage(`Choose one of your ${targetType === "event" ? "events" : "skill posts"} to boost.`);
       return;
     }
@@ -253,7 +271,7 @@ export function CreateAdPage({ authUser }: CreateAdPageProps) {
       await createAdCampaign({
         ownerId: authUser.id,
         targetType,
-        targetId: selectedTargetId,
+        targetId: selectedTarget.id,
         objective: selectedObjective,
         budgetInr: parsedBudget,
         durationDays: parsedDuration,
@@ -328,7 +346,10 @@ export function CreateAdPage({ authUser }: CreateAdPageProps) {
                     <button
                       key={type}
                       type="button"
-                      onClick={() => setTargetType(type)}
+                      onClick={() => {
+                        setTargetType(type);
+                        setSelectedTargetId("");
+                      }}
                       className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
                         targetType === type
                           ? "border-ig-link bg-ig-link text-white"
@@ -340,8 +361,8 @@ export function CreateAdPage({ authUser }: CreateAdPageProps) {
                   ))}
                 </div>
                 <p className="text-xs leading-5 text-ig-muted">
-                  Events must already exist in Explore to be boostable here. Locally created draft events do not show up
-                  until they are stored in Supabase.
+                  Only events already published in Explore can be boosted here. Local-only events are not eligible
+                  until they are saved to Supabase.
                 </p>
               </div>
             </section>
@@ -364,7 +385,7 @@ export function CreateAdPage({ authUser }: CreateAdPageProps) {
                       No {targetType === "event" ? "published events" : "skill posts"} available yet
                     </h3>
                     <p className="mt-2 text-sm leading-6 text-ig-muted">
-                      Create the content first, then come back here to boost it as an ad campaign.
+                      Publish the content to Explore first, then come back here to boost it as an ad campaign.
                     </p>
                     <div className="mt-4 flex flex-wrap gap-3">
                       <Link

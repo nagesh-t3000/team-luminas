@@ -12,7 +12,6 @@ import { getConnectionCount, listConnectedUsernames, subscribeToConnections, tog
 import { getPublicUserByUsername, type PublicUser } from "@/lib/publicUsers";
 import { listSavedProfileItems, subscribeToSavedProfileItems, type SavedProfileItem } from "@/lib/savedItems";
 import { listSkillPostsByUsername, type SkillPost } from "@/lib/skillPosts";
-import { listUserEvents } from "@/lib/userEvents";
 
 type ProfileTab = "posts" | "experience" | "saved";
 
@@ -293,11 +292,10 @@ export function ProfilePage() {
 
     async function loadAuthoredEvents() {
       try {
-        const nextEvents = isOwnProfile
-          ? listUserEvents()
-          : publicProfile?.id
-            ? await listAuthoredExploreUpdates(publicProfile.id, "event", 20)
-            : [];
+        const profileUserId = isOwnProfile ? authUser?.id : publicProfile?.id;
+        const nextEvents = profileUserId
+          ? await listAuthoredExploreUpdates(profileUserId, "event", 20)
+          : [];
 
         if (!isCancelled) {
           setAuthoredEvents(nextEvents);
@@ -316,7 +314,7 @@ export function ProfilePage() {
     return () => {
       isCancelled = true;
     };
-  }, [isOwnProfile, publicProfile?.id]);
+  }, [authUser?.id, isOwnProfile, publicProfile?.id]);
 
   useEffect(() => {
     setSavedItems(listSavedProfileItems());

@@ -46,9 +46,22 @@ function isMissingExploreUpdatesRpcError(error: unknown) {
   return (
     message.includes("Could not find the function public.list_explore_updates") ||
     message.includes("Could not find the function public.list_authored_explore_updates") ||
+    message.includes("Could not find the function public.create_authored_event") ||
     message.includes("schema cache")
   );
 }
+
+type CreateAuthoredEventInput = {
+  authorId: string;
+  sourceName: string;
+  title: string;
+  summary: string;
+  location: string;
+  externalUrl?: string | null;
+  imageUrl?: string | null;
+  tags?: string[];
+  publishedAt: string;
+};
 
 function normalizeStringArray(value: unknown) {
   if (!Array.isArray(value)) {
@@ -150,4 +163,50 @@ export async function listAuthoredExploreUpdates(
   return Array.isArray(data)
     ? data.map((update) => normalizeExploreUpdate(update as ExploreUpdate))
     : [];
+}
+
+export async function createAuthoredEvent({
+  authorId,
+  sourceName,
+  title,
+  summary,
+  location,
+  externalUrl,
+  imageUrl,
+  tags = [],
+  publishedAt,
+}: CreateAuthoredEventInput) {
+  if (!supabase || !isSupabaseConfigured) {
+    throw new Error("Supabase is not configured yet. Update the anon key in .env.");
+  }
+
+  const { data, error } = await supabase.rpc("create_authored_event", {
+    author_id_input: authorId,
+    source_name_input: sourceName,
+    title_input: title,
+    summary_input: summary,
+    location_input: location,
+    external_url_input: externalUrl ?? null,
+    image_url_input: imageUrl ?? null,
+    tags_input: tags,
+    published_at_input: publishedAt,
+  });
+
+  if (error) {
+    if (isMissingExploreUpdatesRpcError(error)) {
+      throw new Error(
+        "Your Supabase SQL is missing the authored events creation migration. Apply `supabase/sql/020_create_authored_events.sql` and try again.",
+      );
+    }
+
+    throw new Error(getErrorMessage(error));
+  }
+
+  const createdEvent = Array.isArray(data) ? data[0] : data;
+
+  if (!createdEvent) {
+    throw new Error("No event was returned from Supabase.");
+  }
+
+  return normalizeExploreUpdate(createdEvent as ExploreUpdate);
 }

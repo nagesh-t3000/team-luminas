@@ -1,4 +1,4 @@
-import type { ExploreUpdate } from "@/lib/exploreUpdates";
+import { createAuthoredEvent, type ExploreUpdate } from "@/lib/exploreUpdates";
 import { getStoredAuthUser, isVerifiedProfile } from "@/lib/appAuth";
 
 const STORAGE_KEY = "luminas.userEvents";
@@ -38,14 +38,6 @@ function readStoredUserEvents() {
   } catch {
     return [] as StoredUserEvent[];
   }
-}
-
-function writeStoredUserEvents(events: StoredUserEvent[]) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(events));
 }
 
 function normalizeString(value: unknown) {
@@ -143,26 +135,15 @@ export async function createUserEvent({
     throw new Error("Only verified profiles can create events.");
   }
 
-  const now = new Date().toISOString();
-  const createdEvent: StoredUserEvent = {
-    id: typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : now,
-    author_id: normalizedAuthorId,
-    category: "event",
-    source_name: sourceName.trim(),
+  return createAuthoredEvent({
+    authorId: normalizedAuthorId,
+    sourceName: sourceName.trim(),
     title: title.trim(),
     summary: summary.trim(),
     location: location.trim() || "Remote",
-    external_url: externalUrl?.trim() || null,
-    image_url: imageUrl?.trim() || null,
+    externalUrl: externalUrl?.trim() || null,
+    imageUrl: imageUrl?.trim() || null,
     tags: normalizeStringArray(tags),
-    raw_payload: {
-      cta: "View event",
-    },
-    published_at: startsAt,
-    created_at: now,
-  };
-
-  const currentEvents = readStoredUserEvents();
-  writeStoredUserEvents(sortNewestFirst([createdEvent, ...currentEvents]));
-  return createdEvent;
+    publishedAt: startsAt,
+  });
 }
